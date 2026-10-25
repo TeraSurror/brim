@@ -99,7 +99,7 @@ could not be automated are listed under **Manual sign-off still needed**.
 ### F1. Notch window
 
 - [x] Borderless, non-activating `NSPanel`, level above `.mainMenu`, `[.canJoinAllSpaces, .stationary, .fullScreenAuxiliary]`, transparent background, centered on `notchRect`.
-- [x] Collapsed window lines up exactly with the hardware notch and can't be seen. (Window bounds are exactly the notch; content is `Color.clear`.)
+- [x] Collapsed window lines up exactly with the hardware notch and can't be seen. (Window bounds are exactly the notch; the SwiftUI content is `Color.clear` and the window alpha is 0 on notched screens, verified as `kCGWindowAlpha=0`.)
 - [x] Never takes keyboard focus or activates Brim when it opens. (`canBecomeKey`/`canBecomeMain` false, `.nonactivatingPanel`.)
 - [x] Appears on every Space and over full-screen apps. (Collection behavior set; full-screen sign-off pending.)
 - [x] Clicks outside the visible panel shape pass through. (The window frame is always exactly the visible panel rect.)
@@ -107,7 +107,7 @@ could not be automated are listed under **Manual sign-off still needed**.
 ### F2. Hover and expand
 
 - [x] Hovering the notch shows a short peek within the hover delay (default 150 ms).
-- [x] Clicking, or hovering longer, opens the full panel with a spring animation. (Content uses a SwiftUI spring; the window frame uses an eased animation.)
+- [x] Clicking, or hovering longer, opens the full panel with a spring animation. (The frame grows with an ease-out; the peek stays visible while the window grows, then the expanded layout fades/lifts in at full size.)
 - [x] Leaving the panel collapses it after the collapse delay (default 400 ms); coming back cancels the collapse.
 - [x] State machine logic is unit tested with a fake clock.
 
@@ -167,6 +167,8 @@ agent process). Run through [`TESTING.md`](TESTING.md).
   file updated.
 - Enabling/disabling the clock — `enabledModules` updated in JSON via the accessibility action.
 - Copy Diagnostics — the clipboard contained version, macOS, screens/notches, settings JSON, and recent log.
+- Collapsed notched window — `CGWindowList` reports alpha 0, so nothing can be drawn around the bezel.
+- Offscreen `ImageRenderer` snapshots of the peek/expanded/collapsed panel — confirmed the panel is near-black, the collapsed view is fully transparent, and the module card/layout are aligned.
 - `ps` — 0.0% CPU; ~22 MB RSS in debug and ~50 MB in release while collapsed.
 
 ## Decisions log
@@ -181,6 +183,10 @@ agent process). Run through [`TESTING.md`](TESTING.md).
 | 2026-10-25 | Pass the emitted `@Published` value into `NotchWindowManager.apply` | `@Published` fires in `willSet`; reading `model.settings` inside the sink rebuilds with the old value |
 | 2026-10-25 | Toggles that need an accessibility action must not use `.labelsHidden()` | On macOS it strips `AXPress` from the resulting checkbox |
 | 2026-10-25 | Module enable/disable is synchronous when no permission is needed | A toggle must reflect immediately, and accessibility actions re-read the binding right away |
+| 2026-10-25 | Set the collapsed notched window's alpha to 0 | Guarantees no stray background pixel, shadow or compositing edge is visible around the bezel |
+| 2026-10-25 | Sequence content: peek first, expanded after the window is nearly grown | Switching layouts while the window resized made the content reflow and look clunky |
+| 2026-10-25 | Give each layout a fixed target size inside the window | The content no longer stretches/reflows during the frame animation; only opacity/offset changes |
+| 2026-10-25 | Keep the chrome at its previous visual state while collapsing | The panel visibly retracts into the notch instead of blinking off before the window moves |
 
 ## Session log
 
@@ -211,3 +217,17 @@ agent process). Run through [`TESTING.md`](TESTING.md).
 - Verified the window layout, hover/expand/collapse, context menu, settings, persistence and diagnostics against the
   running app (details above). Visual checks and full-screen/hot-plug checks remain for a human.
 - Committed as `7e0b495` (`Milestone 1: notch panel shell (F1–F5)`).
+
+### 2026-10-25 — visual polish after first look
+
+- User feedback: the notch still showed a shade, the black could be darker, and peek → expanded was clunky.
+- Set the collapsed notched window alpha to 0 and confirmed `kCGWindowAlpha=0` against the running app.
+- Darkened the panel fill from a grey gradient to black → `0.022` white, and lowered the border/module-card contrast.
+- Split the visual state from the layout state. The peek stays planted while the window grows, then the expanded
+  layout fades in with a 6 pt lift after the frame is nearly at full size. Each layout has a fixed target size so the
+  growing window does not reflow its text.
+- Kept the chrome at its previous shape during collapse so the panel retracts into the notch instead of disappearing
+  before the window finishes moving.
+- Added an offscreen `ImageRenderer` harness (temporary, not committed) to inspect the black level and layout without
+  Screen Recording permission.
+- Remaining for the user: a look at the real hover → peek → expanded → collapse sequence on the notched MacBook.

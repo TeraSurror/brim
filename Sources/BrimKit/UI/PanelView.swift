@@ -7,11 +7,22 @@ struct PanelView: View {
     @ObservedObject var panel: PanelStateModel
     let isNotched: Bool
     let topInset: CGFloat
+    let peekSize: CGSize
+    let expandedSize: CGSize
     let openSettings: () -> Void
     let quit: () -> Void
 
     private var topPadding: CGFloat {
         isNotched ? topInset + 12 : 12
+    }
+
+    /// Fade the incoming layout in with a tiny lift; the outgoing one just fades so the two layouts do
+    /// not appear to slide through each other.
+    private var contentTransition: AnyTransition {
+        .asymmetric(
+            insertion: .opacity.combined(with: .offset(y: 6)),
+            removal: .opacity
+        )
     }
 
     var body: some View {
@@ -24,11 +35,25 @@ struct PanelView: View {
                 }
             } else {
                 chrome
-                content
+                ZStack(alignment: .top) {
+                    if panel.content == .peek {
+                        // Keep each layout at its own target width so the window growth does not
+                        // reflow the content while it is animating.
+                        peekContent
+                            .frame(width: peekSize.width, height: peekSize.height, alignment: .top)
+                            .transition(contentTransition)
+                    }
+                    if panel.content == .expanded {
+                        expandedContent
+                            .frame(width: expandedSize.width, height: expandedSize.height, alignment: .top)
+                            .transition(contentTransition)
+                    }
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+                .animation(.spring(response: 0.34, dampingFraction: 0.88), value: panel.content)
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-        .animation(.spring(response: 0.38, dampingFraction: 0.82), value: panel.state)
         .contextMenu {
             Button("Settings…") { openSettings() }
             Divider()
@@ -54,27 +79,19 @@ struct PanelView: View {
 
     private var chrome: some View {
         let shape = NotchPanelShape(bottomRadius: 28)
+        // Near-black so the panel reads as the notch continuing downward, not a dark grey card.
         let fill = LinearGradient(
             colors: [
-                Color(red: 0.015, green: 0.015, blue: 0.02),
-                Color(red: 0.07, green: 0.07, blue: 0.085),
+                Color.black,
+                Color(white: 0.022),
             ],
             startPoint: .top,
             endPoint: .bottom
         )
         return shape
             .fill(fill)
-            .overlay(shape.strokeBorder(Color.white.opacity(0.07), lineWidth: 1))
+            .overlay(shape.strokeBorder(Color.white.opacity(0.055), lineWidth: 1))
             .clipShape(shape)
-    }
-
-    @ViewBuilder
-    private var content: some View {
-        if panel.state == .peek {
-            peekContent
-        } else {
-            expandedContent
-        }
     }
 
     private var peekContent: some View {
@@ -101,7 +118,7 @@ struct PanelView: View {
                 Text("BRIM")
                     .font(.system(size: 10, weight: .bold, design: .rounded))
                     .tracking(1.4)
-                    .foregroundStyle(.white.opacity(0.3))
+                    .foregroundStyle(.white.opacity(0.38))
 
                 Spacer(minLength: 8)
 
@@ -110,7 +127,7 @@ struct PanelView: View {
                         .font(.system(size: 12, weight: .semibold))
                         .foregroundStyle(.white.opacity(0.55))
                         .frame(width: 24, height: 24)
-                        .background(Circle().fill(Color.white.opacity(0.06)))
+                        .background(Circle().fill(Color.white.opacity(0.045)))
                 }
                 .buttonStyle(.plain)
                 .help("Brim settings")
