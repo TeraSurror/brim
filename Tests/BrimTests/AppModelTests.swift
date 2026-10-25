@@ -1,0 +1,125 @@
+import XCTest
+@testable import BrimKit
+
+@MainActor
+final class AppModelTests: XCTestCase {
+    private var store: FakeSettingsStore!
+    private var loginItems: FakeLoginItems!
+    private var permissions: FakePermissions!
+    private var clock: FakeModule!
+    private var media: FakeModule!
+    private var model: AppModel!
+
+    override func setUp() async throws {
+        var settings = Settings()
+        settings.enabledModules = ["clock"]
+        store = FakeSettingsStore(settings)
+        loginItems = FakeLoginItems()
+        permissions = FakePermissions()
+        clock = FakeModule(id: "clock", permissions: [])
+        media = FakeModule(id: "media", permissions: [.automation], explanation: "Brim needs to talk to Music and Spotify.")
+        let registry = ModuleRegistry(modules: [clock, media])
+        model = AppModel(
+            store: store,
+            loginItems: loginItems,
+            registry: registry,
+            permissions: permissions
+        )
+    }
+
+    func testEnabledModulesAreActiveAtLaunch() {
+        XCTAssertEqual(model.activeModules.map(\.id), ["clock"])
+        XCTAssertEqual(model.disabledModules.map(\.id), ["media"])
+    }
+
+    func testLaunchStateComesFromTheSystemAndIsWrittenBack() {
+        XCTAssertFalse(model.launchAtLogin)
+        XCTAssertFalse(store.stored.launchAtLogin)
+    }
+
+    func testLaunchAtLoginTogglesTheServiceAndSettings() {
+        model.setLaunchAtLogin(true)
+        XCTAssertEqual(loginItems.setCalls, [true])
+        XCTAssertTrue(model.launchAtLogin)
+        XCTAssertTrue(store.stored.launchAtLogin)
+
+        model.setLaunchAtLogin(false)
+        XCTAssertEqual(loginItems.setCalls, [true, false])
+        XCTAssertFalse(store.stored.launchAtLogin)
+    }
+
+    func testLaunchAtLoginFailureIsReported() {
+        loginItems.failure = FakeLoginError()
+        model.setLaunchAtLogin(true)
+
+        XCTAssertNotNil(model.launchAtLoginError)
+        XCTAssertFalse(model.launchAtLogin)
+    }
+
+    func testEnablingAModuleWithoutPermissionsNeverAsks() async {
+        model.setModuleEnabled("media", false)
+        model.setModuleEnabled("clock", true)
+        XCTAssertTrue(permissions.requests.isEmpty)
+    }
+
+    func testPermissionsAreRequestedOnlyWhenTheModuleIsTurnedOn() async {
+        XCTAssertTrue(permissions.requests.isEmpty)
+
+        await model.enableModuleAfterPermissionExplanation("media")
+
+        XCTAssertEqual(permissions.requests, [.automation])
+        XCTAssertEqual(model.activeModules.map(\.id), ["clock", "media"])
+        XCTAssertTrue(media.isEnabled)
+    }
+
+    func testAlreadyGrantedPermissionIsNotRequestedAgain() async {
+        permissions.statuses[.automation] = .granted
+        await model.enableModuleAfterPermissionExplanation("media")
+        XCTAssertTrue(permissions.requests.isEmpty)
+    }
+
+    func testADeniedPermissionStillEnablesTheModuleDegraded() async {
+        permissions.requestResult = .denied
+        await model.enableModuleAfterPermissionExplanation("media")
+
+        XCTAssertEqual(permissions.requests, [.automation])
+        XCTAssertTrue(model.activeModules.contains { $0.id == "media" })
+    }
+
+    func testReenablingDoesNotAskAgainAfterAGrant() async {
+        await model.enableModuleAfterPermissionExplanation("media")
+        model.setModuleEnabled("media", false)
+        await model.enableModuleAfterPermissionExplanation("media")
+
+        XCTAssertEqual(permissions.requests, [.automation])
+    }
+
+    func testReenablingAfterADenialAsksAgain() async {
+        permissions.requestResult = .denied
+        await model.enableModuleAfterPermissionExplanation("media")
+        model.setModuleEnabled("media", false)
+        await model.enableModuleAfterPermissionExplanation("media")
+
+        XCTAssertEqual(permissions.requests, [.automation, .automation])
+    }
+
+    func testMovingAModuleChangesPanelOrderAndPersists() async {
+        await model.enableModuleAfterPermissionExplanation("media")
+        XCTAssertEqual(model.activeModules.map(\.id), ["clock", "media"])
+
+        model.moveModule(id: "media", by: -1)
+
+        XCTAssertEqual(model.activeModules.map(\.id), ["media", "clock"])
+        XCTAssertEqual(store.stored.enabledModules, ["media", "clock"])
+    }
+
+    func testMovingBeyondTheEndsIsIgnored() {
+        model.moveModule(id: "clock", by: -1)
+        XCTAssertEqual(model.activeModules.map(\.id), ["clock"])
+    }
+
+    func testSettingsAreSavedOnChange() {
+        model.settings.hoverDelay = 0.5
+        XCTAssertEqual(store.stored.hoverDelay, 0.5)
+    }
+}

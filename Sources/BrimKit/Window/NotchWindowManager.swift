@@ -1,0 +1,147 @@
+import AppKit
+import CoreGraphics
+import Foundation
+
+/// Keeps exactly one panel window per eligible screen and forwards pointer events to each screen's
+/// state machine. Rebuilds on display changes so plugging in a monitor never leaves a stray window.
+@MainActor
+final class NotchWindowManager {
+    private let model: AppModel
+    private let screens: ScreenProviding
+    private let scheduler: Scheduling
+    private let monitor: PointerMonitoring
+    private let metrics: PanelMetrics
+    private var controllers: [String: NotchWindowController] = [:]
+    private var screenObserver: NSObjectProtocol?
+    private var rebuildTask: TaskHandle?
+    private var showOnNonNotchedDisplays: Bool
+    private var screenSignature = ""
+
+    init(
+        model: AppModel,
+        screens: ScreenProviding = NSScreenProvider(),
+        scheduler: Scheduling = DispatchScheduler(),
+        monitor: PointerMonitoring,
+        metrics: PanelMetrics = PanelMetrics()
+    ) {
+        self.model = model
+        self.screens = screens
+        self.scheduler = scheduler
+        self.monitor = monitor
+        self.metrics = metrics
+        self.showOnNonNotchedDisplays = model.settings.showOnNonNotchedDisplays
+
+        monitor.onMove = { [weak self] point in self?.pointerMoved(to: point) }
+        monitor.onLeftClick = { [weak self] point in self?.clicked(at: point) }
+        monitor.start()
+
+        screenObserver = NotificationCenter.default.addObserver(
+            forName: NSApplication.didChangeScreenParametersNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated { self?.scheduleRebuild() }
+        }
+
+        rebuild()
+    }
+
+    /// Called whenever settings change. Timing changes apply live; the non-notched toggle needs new windows.
+    func apply(_ settings: Settings) {
+        let timings = Self.timings(for: settings)
+        for controller in controllers.values {
+            controller.update(timings: timings)
+        }
+        if settings.showOnNonNotchedDisplays != showOnNonNotchedDisplays {
+            showOnNonNotchedDisplays = settings.showOnNonNotchedDisplays
+            // `@Published` fires before the property is stored, so pass this value explicitly.
+            rebuild(force: true, using: settings)
+        }
+    }
+
+    func stop() {
+        rebuildTask?.cancel()
+        rebuildTask = nil
+        if let screenObserver {
+            NotificationCenter.default.removeObserver(screenObserver)
+        }
+        screenObserver = nil
+        monitor.stop()
+        for controller in controllers.values {
+            controller.close()
+        }
+        controllers.removeAll()
+    }
+
+    // MARK: - Pointer
+
+    private func pointerMoved(to point: CGPoint) {
+        // Every display sees every move; a point outside a panel is how that panel learns to collapse.
+        for controller in controllers.values {
+            controller.pointerMoved(to: point)
+        }
+    }
+
+    private func clicked(at point: CGPoint) {
+        for controller in controllers.values {
+            controller.clicked(at: point)
+        }
+    }
+
+    // MARK: - Screens
+
+    private func scheduleRebuild() {
+        rebuildTask?.cancel()
+        rebuildTask = scheduler.schedule(after: 0.25) { [weak self] in
+            self?.rebuildTask = nil
+            self?.rebuild(force: false)
+        }
+    }
+
+    private func rebuild(force: Bool = false, using explicitSettings: Settings? = nil) {
+        let settings = explicitSettings ?? model.settings
+        let timings = Self.timings(for: settings)
+        let currentScreens = screens.screens
+        // macOS sends several screen-parameter notifications during launch. Rebuilding on each one
+        // would throw away a panel the user is already hovering.
+        let eligibleScreens = currentScreens.filter { $0.hasNotch || settings.showOnNonNotchedDisplays }
+        let signature = Self.signature(for: eligibleScreens)
+        guard force || signature != screenSignature else {
+            for controller in controllers.values {
+                controller.update(timings: timings)
+            }
+            return
+        }
+        screenSignature = signature
+
+        let previous = controllers
+        var next: [String: NotchWindowController] = [:]
+
+        for screen in eligibleScreens {
+            next[screen.id] = NotchWindowController(
+                screen: screen,
+                model: model,
+                metrics: metrics,
+                timings: timings,
+                scheduler: scheduler
+            )
+        }
+
+        controllers = next
+        for controller in previous.values where next[controller.screenID] !== controller {
+            controller.close()
+        }
+        Log.window.info("Built \(next.count, privacy: .public) panel window(s) for \(currentScreens.count, privacy: .public) screen(s)")
+    }
+
+    private static func signature(for screens: [ScreenInfo]) -> String {
+        screens.map {
+            "\($0.id)|\($0.frame.origin.x),\($0.frame.origin.y),\($0.frame.width),\($0.frame.height)"
+                + "|\($0.topInset)|\($0.auxiliaryLeftWidth ?? -1)|\($0.auxiliaryRightWidth ?? -1)"
+        }.joined(separator: ";")
+    }
+
+    private static func timings(for settings: Settings) -> PanelTimings {
+        PanelTimings(hoverDelay: settings.hoverDelay, collapseDelay: settings.collapseDelay)
+    }
+}

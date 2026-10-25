@@ -6,10 +6,14 @@ panel. The source of truth for features and acceptance criteria is
 
 ## Current state
 
-The repository holds only the spec. No code exists yet. Brim copies its project layout from its sibling app
-**Speakeasy** (`../speakeasy`, a menu bar manager), which is further along (M1 and M2 shipped). When this file says
-"as in Speakeasy", open the named Speakeasy file and copy its pattern. **Copy and adapt the code, never import or
-depend on Speakeasy.** The two apps must build, sign and crash independently.
+M1 is implemented: the notch panel shell (F1–F5), the clock module, settings and the per-screen window manager.
+[`docs/PROGRESS.md`](docs/PROGRESS.md) is the handoff between sessions — read it after the spec. Visual sign-off for M1
+is still pending; the checklist is [`docs/TESTING.md`](docs/TESTING.md). M2 (media controls) has not started and needs a
+Now Playing prototype first.
+
+Brim copies its project layout from its sibling app **Speakeasy** (`../speakeasy`, a menu bar manager), which is further
+along (M1 and M2 shipped). When this file says "as in Speakeasy", open the named Speakeasy file and copy its pattern.
+**Copy and adapt the code, never import or depend on Speakeasy.** The two apps must build, sign and crash independently.
 
 Update this file when the real layout drifts from what's described here.
 
