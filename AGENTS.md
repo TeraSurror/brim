@@ -6,10 +6,12 @@ panel. The source of truth for features and acceptance criteria is
 
 ## Current state
 
-M1 is implemented: the notch panel shell (F1–F5), the clock module, settings and the per-screen window manager.
-[`docs/PROGRESS.md`](docs/PROGRESS.md) is the handoff between sessions — read it after the spec. Visual sign-off for M1
-is still pending; the checklist is [`docs/TESTING.md`](docs/TESTING.md). M2 (media controls) has not started and needs a
-Now Playing prototype first.
+M1 and M2 are implemented: the notch panel shell (F1–F5), the clock and Now Playing modules, settings schema 2, the
+per-screen window manager, and the bundled MediaRemote helper (built from a pinned third-party source). 100 unit tests
+pass. [`docs/PROGRESS.md`](docs/PROGRESS.md) is the handoff between sessions — read it after the spec. Visual sign-off
+for M1 and the real-player/two-player sign-off for M2 are still pending; the checklist is
+[`docs/TESTING.md`](docs/TESTING.md). M3 (AI tools and IDE integration) has not been designed; brainstorm with the user
+before writing acceptance criteria.
 
 Brim copies its project layout from its sibling app **Speakeasy** (`../speakeasy`, a menu bar manager), which is further
 along (M1 and M2 shipped). When this file says "as in Speakeasy", open the named Speakeasy file and copy its pattern.
@@ -26,7 +28,9 @@ brim/
 ├── README.md                          # documentation hub: build/run, code layout, troubleshooting
 ├── LICENSE
 ├── Package.swift                      # SwiftPM: Brim (executable), BrimKit (library), BrimTests
-├── build.sh                           # builds build/Brim.app and signs it ad hoc
+├── build.sh                           # builds build/Brim.app, bundles the media helper and signs ad hoc
+├── scripts/
+│   └── build-media-adapter.sh         # pinned MediaRemote adapter build (BSD-3, output in .build/)
 ├── .gitignore                         # .build/ build/ *.app .swiftpm/ xcuserdata/ DerivedData/ .DS_Store
 ├── Resources/
 │   └── Info.plist                     # com.harshshelar.brim, LSUIElement = YES, LSMinimumSystemVersion 14.0
@@ -37,11 +41,12 @@ brim/
 │       ├── App/                       # composition root: launcher, AppDelegate, AppController, AppModel, WindowPresenter
 │       ├── Window/                    # NotchWindow (NSPanel), per-screen window manager, pointer tracking
 │       ├── State/                     # hover/expand state machine, timers. Pure logic, no AppKit
-│       ├── Modules/                   # BrimModule protocol, module registry, implementations (placeholder, Media, …)
-│       ├── Services/                  # Protocols.swift + real implementations (screens, now playing, login item, settings)
+│       ├── Modules/                   # BrimModule protocol, module registry, implementations (Clock, Media, …)
+│       ├── Services/                  # Protocols.swift + real implementations (screens, now playing, login item,
+│       │                              #   settings, MediaRemote helper, Spotify/Music Apple Events)
 │       ├── Model/                     # value types: ScreenInfo, PanelState, NowPlaying, Settings
 │       ├── Support/                   # Log.swift (os.Logger categories), Diagnostics.swift
-│       └── UI/                        # SwiftUI panel views and settings. Never touches NSPanel
+│       └── UI/                        # SwiftUI panel views, media card and settings. Never touches NSPanel
 ├── Tests/
 │   └── BrimTests/
 │       ├── Fakes.swift                # every fake in one file
@@ -58,7 +63,7 @@ come from Speakeasy and hold the composition root, plain data types and logging.
 
 | Speakeasy | Brim | Notes |
 | --- | --- | --- |
-| `Package.swift` | `Package.swift` | Same three targets and `.macOS(.v14)`. Brim has **no** dependencies (Speakeasy uses KeyboardShortcuts) |
+| `Package.swift` | `Package.swift` | Same three targets and `.macOS(.v14)`. No SwiftPM dependencies (Speakeasy uses KeyboardShortcuts); the MediaRemote helper is a separately built, user-approved third-party binary under `scripts/` |
 | `build.sh` | `build.sh` | Swap the names. Keep the `*.bundle` copy loop only if a dependency or resource bundle appears |
 | `Resources/Info.plist` | `Resources/Info.plist` | Bundle ID `com.harshshelar.brim`. Add usage strings only when a feature needs them |
 | `Sources/Speakeasy/main.swift` | `Sources/Brim/main.swift` | Calls the launcher, nothing else |
@@ -97,9 +102,14 @@ These come from the spec's "Instructions for the coding agent" and Speakeasy's c
 6. **No permission requests at launch.** A module asks for its permission only when the user enables it, after an
    in-app explanation, and keeps working (degraded) when permission is denied.
 7. **No network access in M1 or M2.** No analytics, ever.
-8. **No third-party dependencies** without asking the user first.
+8. **No third-party dependencies** without asking the user first. The one approved exception is the build-time MediaRemote helper (BSD-3, pinned by tag and SHA, never linked or committed).
 9. **Idle cost is near zero:** under 0.5% CPU and under 80 MB memory. Prefer notifications to polling, and never poll
    faster than once a second while collapsed. Monitors (pointer, now playing) run only while someone needs them.
+10. **Media stays behind `NowPlayingProviding`.** The MediaRemote helper is a child process loaded by Perl, never
+    linked into Brim. The stream runs only between the first peek and the end of the collapse animation (plus a one
+    second grace), and is wrapped in a supervisor that watches Brim's PID so it cannot outlive the app.
+11. **Player control is optional.** The helper needs no permission. Following Spotify or Music directly is an
+    Automation feature requested through the module's explanation flow; denial must leave the adapter path working.
 
 ## Code conventions (as in Speakeasy)
 
@@ -116,13 +126,18 @@ These come from the spec's "Instructions for the coding agent" and Speakeasy's c
 ## Build, run, test
 
 ```sh
-swift build          # compile
+swift build          # compile (no media helper needed)
 swift test           # unit tests (XCTest, @testable import BrimKit)
 ./build.sh           # release build → build/Brim.app, signed ad hoc (./build.sh debug for debug)
 open build/Brim.app
 ```
 
 - Requires macOS 14+ and Swift 5.10+. The main test machine is an Apple Silicon MacBook with a notch.
+- `./build.sh` also builds the MediaRemote helper on first use: it needs **CMake** and network access to clone the
+  pinned tag into `.build/media-adapter-src`. `swift test` and `swift build` do not. Use
+  `BRIM_SKIP_MEDIA_ADAPTER=1 ./build.sh` for an app without media; the rest of Brim still runs.
+- No media is playing in an automated environment, so test the helper with its `test` command and the manual media
+  checks in [`docs/TESTING.md`](docs/TESTING.md), or point `BRIM_MEDIA_ADAPTER_PATH` at a stub adapter for UI work.
 - `build/` and `.build/` are git-ignored. Never commit build output.
 - Ad hoc signing means every rebuild looks like a new app to macOS, so granted permissions (Automation, etc.) get
   dropped. Re-grant them in System Settings → Privacy & Security and describe this in the README troubleshooting section.
@@ -149,8 +164,12 @@ open build/Brim.app
 
 ## Known risks to keep in mind
 
-- **MediaRemote is locked down on macOS 15.4+.** Prototype `mediaremote-adapter` first and fall back to Apple Events
-  (Spotify and Music.app only). Keep both behind `NowPlayingService`.
+- **MediaRemote is locked down on macOS 15.4+.** Brim bundles `ungive/mediaremote-adapter` v0.7.7 (BSD-3, user
+  approved), built from a pinned SHA by `scripts/build-media-adapter.sh`; the helper prints JSON through
+  `/usr/bin/perl`. The `test` command detects a future break. Fall back to Apple Events (Spotify and Music.app only)
+  via `PlayerAutomationService`; keep both behind `NowPlayingProviding`.
+- **The helper is private-API dependent.** Do not link its framework into Brim, do not commit its binaries, and bump
+  the pinned tag only after running the `test` command and the manual media checks on the current macOS.
 - **Window level and full-screen behavior** shift between macOS releases. Keep all window setup in `NotchWindow`.
 - **Notch geometry** comes only from `auxiliaryTopLeftArea` / `auxiliaryTopRightArea`. Derive `notchRect` in one place
   and unit test it.

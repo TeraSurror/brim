@@ -1,8 +1,9 @@
 # Manual testing and known limitations
 
 Run on a notched MacBook, with and without an external display, in light and dark mode, and over a full-screen app.
-The M1 code was also exercised programmatically (window bounds, accessibility tree, synthetic clicks); the visual
-checks below still need a person at the screen. See [`PROGRESS.md`](PROGRESS.md) for what was already verified.
+M1 and the M2 media card were also exercised programmatically (window bounds, accessibility tree, synthetic clicks, an
+offscreen stub adapter); the visual checks below still need a person at the screen. See [`PROGRESS.md`](PROGRESS.md)
+for what was already verified.
 
 ## M1 manual verification — notch panel shell
 
@@ -34,6 +35,43 @@ checks below still need a person at the screen. See [`PROGRESS.md`](PROGRESS.md)
 | Perf | Leave Brim collapsed for a minute, then check Activity Monitor. | Under 0.5% CPU and under 80 MB memory. No periodic polling visible in `log stream`. |
 | Logs | `log stream --predicate 'subsystem == "com.harshshelar.brim"'` while hovering and opening settings. | Window/state/general messages appear; no `print` output. |
 
+## M2 manual verification — media controls
+
+Turn the media module on in Settings → Modules first. The first enable shows Brim's explanation, then macOS may ask for
+Automation (only for Spotify or Music that is running). Declining must still leave macOS-reported media working.
+
+| Feature | Check | Expected |
+| --- | --- | --- |
+| F6 | Play a track in Spotify or Music, then hover the notch. | The peek shows small artwork on the left, title/artist beside it and the playing indicator on the right. |
+| F6 | Play a YouTube video in Safari, then hover the notch. | The same compact view appears with Safari as the source (artwork when macOS provides it). |
+| F6 | With the panel expanded, look at the media card. | Artwork, title, artist, album, progress bar, elapsed/remaining time, previous / play-pause / next, and a source menu. |
+| F6 | Press play/pause, next and previous in the expanded panel. | The player reacts immediately and the card updates. Pause shows a play glyph; the compact indicator stops animating. |
+| F6 | Drag the progress bar, then release. | The player seeks to that position. While dragging, the time labels follow the pointer. |
+| F6 | Let a track play for a few seconds without touching anything. | The progress bar and elapsed time advance every second while the panel is open; they stop when it closes. |
+| F6 | Change track in the player while the panel is open. | Artwork and metadata update within one second. |
+| F6 | Stop playback (or quit the player). | The media module hides from the peek; the expanded card shows the quiet "Nothing playing" state. |
+| F6 | Play Spotify and Music at the same time. Open the source menu (or Settings → General → Follow). | Picking a player makes Brim follow it. Picking Automatic returns to whatever macOS reports. (The development machine only has Music installed; test Spotify on a machine that has it.) |
+| F6 | Open Settings → General while a player runs. | The Follow picker lists Automatic plus installed Spotify/Music. Automation status is readable; "Grant Automation…" exists when it is not granted. |
+| Permissions | Enable the media module with the player closed. | No Brim or macOS prompt appears (macOS cannot ask for a target that is not running). Start the player, then use Grant Automation…: the system prompt appears. |
+| Permissions | Deny Automation, then play Safari/YouTube. | Media still appears through MediaRemote; Spotify/Music direct following falls back to Automatic. |
+| Lifecycle | Open the panel, then close it and wait ~2 s. | `pgrep -fl mediaremote-adapter` is empty; the helper stops after the one-second grace. |
+| Lifecycle | With the panel open, quit Brim, then repeat with `kill -9`. | No `perl … mediaremote-adapter` or `brim-media-supervisor` process survives. |
+| Multi-display | Open a panel on each display, then close one. | The other panel keeps its media; the helper stops only when both are closed. |
+| Perf | Leave Brim collapsed for a minute after using media. | Under 0.5% CPU and under 80 MB memory; no Perl helper while collapsed. |
+| Settings | Change Follow, quit and relaunch. | The choice is restored from `settings.json`; schema is 2. |
+| F5 | Settings → About → Copy Diagnostics. | The report includes a Media section: helper bundled/available, followed player, current track (no artwork). |
+| F6 | Move the panel to a display without a notch while media plays. | Same compact/expanded media layout; no crash or stale artwork. |
+
+### Media regression checks
+
+- Build without the helper: `BRIM_SKIP_MEDIA_ADAPTER=1 ./build.sh`, then enable the module. The panel must not crash;
+  the expanded card shows the empty state and the log says the helper is unavailable. Automation for a running,
+  permitted player can still provide a track.
+- Pin/update the adapter: run `./scripts/build-media-adapter.sh --force`, then
+  `/usr/bin/perl build/Brim.app/Contents/Resources/MediaAdapter/mediaremote-adapter.pl "$PWD/build/Brim.app/Contents/Resources/MediaAdapter/MediaRemoteAdapter.framework" test`.
+  Exit code 0 means the current macOS still allows the helper.
+- ad-hoc signing: after a rebuild, Automation may need to be granted again. Check the Automation status in Settings.
+
 ## Notched vs non-notched geometry
 
 - Notched screen: the collapsed window must equal the hardware notch (recorded 179×32 on the development machine).
@@ -50,8 +88,8 @@ checks below still need a person at the screen. See [`PROGRESS.md`](PROGRESS.md)
   bar/underlying app; the panel is opened by hover/click, and its menu is available once it is visible.
 - The collapsed notched window ignores mouse events on purpose. A click there is observed by the global pointer monitor
   and opens the panel, but it also reaches whatever is underneath the notch (normally nothing).
-- M1 has no module that needs a permission. `SystemPermissionService` is a placeholder; the explanation/enable flow is
-  covered by unit tests with a fake module and will be wired to real checks in M2.
+- M1 has no module that needs a permission. M2 wires the Automation check (per player) through the same
+  explanation/enable flow; Accessibility, Calendar and the placeholder media-access kind still return `.notDetermined`.
 - Launch at login is implemented through `SMAppService.mainApp`. Ad-hoc-signed dev builds can fail registration or
   become stale after a rebuild; test it once, then turn it off. Grant/registration behavior can differ from a
   properly signed release build.
@@ -62,3 +100,26 @@ checks below still need a person at the screen. See [`PROGRESS.md`](PROGRESS.md)
   full-screen app, check `NotchWindow`'s level and collection behaviour first.
 - The app is an agent (`LSUIElement`); it has no Dock icon and no menu bar icon. Settings is reachable from the panel
   context menu, the panel gear, or ⌘, while a Brim window is focused.
+
+## Known limitations and notes for M2
+
+- **MediaRemote is private.** The helper is `ungive/mediaremote-adapter` v0.7.7 (BSD-3), built from source by
+  `scripts/build-media-adapter.sh` and loaded by `/usr/bin/perl`. If a macOS update closes that hole, the helper's
+  `test` command fails and Brim falls back to Apple Events for Spotify/Music. Safari/Chrome would then lose media.
+- The helper runs only while a panel is open, so the first peek can show the empty state for a fraction of a second
+  while Perl starts. This is deliberate: keeping the stream alive while collapsed costs ~25 MB.
+- The `stream` helper is wrapped in a one-second supervisor (a tiny `/bin/sh`) that watches Brim's PID. A crash or
+  `kill -9` therefore cannot leave an orphaned Perl process; a normal quit stops it immediately.
+- **Player choice covers Spotify and Music only.** Safari, Chrome, QuickTime and other players are whatever macOS
+  reports; they cannot be chosen independently. Spotify's scripting dictionary has no artwork data, so when it is
+  followed directly while another app owns the system Now Playing, the artwork placeholder is shown. Music artwork is
+  read through Apple Events.
+- Automation is granted per player and macOS refuses to prompt for a player that is not running. Start Spotify or
+  Music before using Grant Automation…; the module still works through MediaRemote without it.
+- With only Music installed (the development machine), the two-player acceptance check cannot be exercised against
+  Spotify. The coordinator and menu logic are covered by unit tests with fakes.
+- The expanded panel gives the media module layout priority so it gets more than half the width when the clock is also
+  enabled. A card narrower than about 300 pt truncates the title; both modules still remain usable.
+- The panel stays near-black in light and dark mode on purpose; only the settings window follows the system appearance.
+- The adapter build needs CMake and network access on the first run. `BRIM_SKIP_MEDIA_ADAPTER=1 ./build.sh` produces an
+  app without it; the rest of Brim works.

@@ -1,21 +1,24 @@
 # Brim
 
 A native macOS app that turns the MacBook notch into a hover-to-expand panel. Hover the notch for a peek, click or keep
-hovering for the full panel, and put glanceable, controllable things right where the pointer already goes. Media
-controls come next; the shell is built to host pluggable modules.
+hovering for the full panel, and put glanceable, controllable things right where the pointer already goes. The shell is
+built to host pluggable modules; media controls are the first real one.
 
 - **Notch window** that never takes focus, follows every Space, and works over full-screen apps
 - **Peek → expand → collapse** driven by a small, unit-tested state machine
 - **One panel per screen**, including a slim handle on displays without a notch
-- **Module host** with a clock module in M1; media and AI tools plug in without touching the window shell
+- **Module host** with clock and Now Playing modules; AI tools plug in without touching the window shell
+- **Media controls**: artwork in the peek, then a full card with title, artist, progress, seek and transport buttons
+  for anything macOS reports (Spotify, Music, Safari/YouTube, …), with optional direct Spotify/Music control
+- **Works with no media**: the module disappears from the peek and shows a quiet empty state in the panel
 - **Settings** for hover/collapse timing, launch at login, modules and multi-display behaviour
 - **No network access, no analytics, no menu bar icon**
 
 ## Status
 
-M1 (notch panel shell) is implemented. See [`docs/PROGRESS.md`](docs/PROGRESS.md) for the current milestone, what is
-verified, and the next session's starting point. The visual sign-off checklist is in
-[`docs/TESTING.md`](docs/TESTING.md).
+M1 (notch panel shell) and M2 (media controls) are implemented and unit tested. Real-player, two-player and visual
+sign-off still need a person at the screen. See [`docs/PROGRESS.md`](docs/PROGRESS.md) for what is verified and the next
+session's starting point; the checklists are in [`docs/TESTING.md`](docs/TESTING.md).
 
 ## Documentation
 
@@ -26,15 +29,18 @@ verified, and the next session's starting point. The visual sign-off checklist i
 
 ## Build and run
 
-Requires macOS 14 or later and Swift 5.10+.
+Requires macOS 14 or later and Swift 5.10+. Building the app also needs **CMake** and network access the first time,
+because it builds the pinned MediaRemote helper into the bundle.
 
 ```sh
-swift test          # unit tests
-./build.sh          # builds build/Brim.app (ad-hoc signed)
+swift test          # unit tests (does not need the media helper)
+./build.sh          # builds build/Brim.app (ad-hoc signed), including the media helper
 open build/Brim.app
 ```
 
-`./build.sh debug` builds a debug bundle instead. The app is an agent (`LSUIElement`): no Dock icon. Hover the notch,
+`./build.sh debug` builds a debug bundle instead. `BRIM_SKIP_MEDIA_ADAPTER=1 ./build.sh` builds without media; the rest
+of Brim works. The helper is [ungive/mediaremote-adapter](https://github.com/ungive/mediaremote-adapter) v0.7.7
+(BSD-3), cloned into `.build/media-adapter-src` and never committed. Its license is copied into the app bundle. The app is an agent (`LSUIElement`): no Dock icon. Hover the notch,
 or the slim handle at the top center of a display without a notch, to open the panel. Right-click the open panel for
 Settings and Quit; ⌘, also opens Settings while a Brim window is focused.
 
@@ -45,10 +51,12 @@ Bundle ID: `com.harshshelar.brim`. Settings live in
 
 - `Sources/BrimKit/Window/`: all AppKit panel code (`NSPanel`, frames, pointer tracking, per-screen manager)
 - `Sources/BrimKit/State/`: pure hover/expand geometry and state machine, driven by an injected scheduler
-- `Sources/BrimKit/Modules/`: `BrimModule`, registry and the clock module
-- `Sources/BrimKit/Services/`: protocols plus real implementations (screens, login item, settings, permissions)
-- `Sources/BrimKit/Model/`: `ScreenInfo`, `PanelState`, `Settings`, permissions
-- `Sources/BrimKit/UI/`: SwiftUI panel and settings views; no `NSPanel` or `NSScreen` access
+- `Sources/BrimKit/Modules/`: `BrimModule`, registry, the clock module and the Now Playing module
+- `Sources/BrimKit/Services/`: protocols plus real implementations (screens, login item, settings, permissions,
+  MediaRemote helper process, Spotify/Music Apple Events, now-playing coordinator)
+- `Sources/BrimKit/Model/`: `ScreenInfo`, `PanelState`, `NowPlaying`, `Settings`, permissions
+- `scripts/build-media-adapter.sh`: builds the pinned third-party helper into `.build/media-adapter`
+- `Sources/BrimKit/UI/`: SwiftUI panel, media card and settings views; no `NSPanel` or `NSScreen` access
 - `Sources/BrimKit/App/`: composition root, app delegate, settings window, shared model
 - `Tests/BrimTests/`: fakes and unit tests
 - `docs/`: progress, manual testing
@@ -57,6 +65,29 @@ Architecture rules and conventions are in [`AGENTS.md`](AGENTS.md). In short: on
 `Window/`/`App/`, `State/` is pure, every system API sits behind a protocol with a fake, and features are modules.
 
 ## Troubleshooting
+
+### Media does not appear
+
+- Turn the module on: **Settings → Modules → Now Playing**. It is off by default so the M1 panel stays unchanged.
+- The first enable shows Brim's explanation, then macOS may ask for Automation (only for Spotify or Music that is
+  running). Declining still leaves macOS-reported media working.
+- Media appears only while a panel is open — Brim deliberately stops the helper when it collapses to keep idle cost
+  near zero. The first peek can take a fraction of a second to show the track.
+- Check the helper and the log:
+  ```sh
+  pgrep -fl 'mediaremote-adapter|brim-media-supervisor'
+  log stream --predicate 'subsystem == "com.harshshelar.brim"'
+  ```
+- If the helper is missing or broken, media still works through Automation for a running Spotify/Music, and the panel
+  shows the empty state otherwise. Rebuild with `./scripts/build-media-adapter.sh --force`, then run the `test` command
+  printed in [`docs/TESTING.md`](docs/TESTING.md). A future macOS release can close the Perl/MediaRemote route.
+- `swift run` does not have the bundle resources; point `BRIM_MEDIA_ADAPTER_PATH` at `.build/media-adapter` (or use
+  `./build.sh`).
+
+### Automation was denied or keeps asking
+
+macOS grants Automation per player and only prompts for a player that is running. Start Spotify or Music, then use
+**Settings → General → Grant Automation…**. Ad-hoc rebuilding can reset grants; re-grant after a dev rebuild.
 
 ### The panel does not appear on hover
 
@@ -94,4 +125,5 @@ that do not change the screen layout.
 
 ## License
 
-[MIT](LICENSE)
+[MIT](LICENSE). The bundled MediaRemote helper is BSD-3; its license is included in the app bundle at
+`Contents/Resources/MediaAdapter/LICENSE`.
