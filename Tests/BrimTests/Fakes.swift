@@ -104,6 +104,96 @@ final class FakePermissions: PermissionRequesting {
 }
 
 @MainActor
+final class FakeMediaAdapter: MediaAdapterStreaming {
+    var onUpdate: ((NowPlaying?) -> Void)?
+    var onFailure: ((String) -> Void)?
+    var isAvailable = true
+    var isRunning = false
+    private(set) var startCount = 0
+    private(set) var stopCount = 0
+    private(set) var commands: [PlayerCommand] = []
+    private(set) var seeks: [TimeInterval] = []
+
+    func start() {
+        startCount += 1
+        isRunning = true
+    }
+
+    func stop() {
+        stopCount += 1
+        isRunning = false
+    }
+
+    func send(_ command: PlayerCommand) { commands.append(command) }
+    func seek(to position: TimeInterval) { seeks.append(position) }
+
+    func emit(_ track: NowPlaying?) { onUpdate?(track) }
+    func fail(_ message: String = "failed") { onFailure?(message) }
+}
+
+@MainActor
+final class FakePlayerAutomation: PlayerAutomationControlling {
+    var permitted = true
+    var snapshots: [ScriptablePlayer: NowPlaying] = [:]
+    private(set) var reads: [ScriptablePlayer] = []
+    private(set) var commands: [(command: PlayerCommand, player: ScriptablePlayer)] = []
+    private(set) var seeks: [(position: TimeInterval, player: ScriptablePlayer)] = []
+
+    func isPermitted(for player: ScriptablePlayer) -> Bool { permitted }
+
+    func snapshot(of player: ScriptablePlayer) -> NowPlaying? {
+        reads.append(player)
+        return snapshots[player]
+    }
+
+    func send(_ command: PlayerCommand, to player: ScriptablePlayer) {
+        commands.append((command, player))
+    }
+
+    func seek(to position: TimeInterval, in player: ScriptablePlayer) {
+        seeks.append((position, player))
+    }
+}
+
+@MainActor
+final class FakePlayerDiscovery: PlayerDiscovering {
+    var installedPlayers: [ScriptablePlayer]
+    var running: Set<ScriptablePlayer>
+
+    init(installed: [ScriptablePlayer] = [.spotify, .music], running: Set<ScriptablePlayer> = [.spotify, .music]) {
+        self.installedPlayers = installed
+        self.running = running
+    }
+
+    func isRunning(_ player: ScriptablePlayer) -> Bool { running.contains(player) }
+}
+
+@MainActor
+final class FakeNowPlayingService: NowPlayingProviding {
+    var current: NowPlaying?
+    var sources: [NowPlayingSource] = []
+    var isAvailable = true
+    var onUpdate: ((NowPlaying?) -> Void)?
+    var onSourcesChange: (([NowPlayingSource]) -> Void)?
+    private(set) var startCount = 0
+    private(set) var stopCount = 0
+    private(set) var followed: [String?] = []
+    private(set) var commands: [PlayerCommand] = []
+    private(set) var seeks: [TimeInterval] = []
+
+    func startMonitoring() { startCount += 1 }
+    func stopMonitoring() { stopCount += 1 }
+    func follow(_ sourceID: String?) { followed.append(sourceID) }
+    func send(_ command: PlayerCommand) { commands.append(command) }
+    func seek(to position: TimeInterval) { seeks.append(position) }
+
+    func emit(_ track: NowPlaying?) {
+        current = track
+        onUpdate?(track)
+    }
+}
+
+@MainActor
 final class FakeModule: BrimModule {
     let id: String
     let title: String
