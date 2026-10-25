@@ -18,5 +18,12 @@ for bundle in "$BIN_DIR"/*.bundle; do
     [ -e "$bundle" ] && cp -R "$bundle" "$APP/Contents/Resources/"
 done
 
+if [ "${BRIM_SKIP_MEDIA_ADAPTER:-0}" = "1" ]; then
+    echo "warning: BRIM_SKIP_MEDIA_ADAPTER=1: building without the MediaRemote helper"
+else
+    ./scripts/build-media-adapter.sh
+    cp -R .build/media-adapter "$APP/Contents/Resources/MediaAdapter"
+fi
+
 codesign --force --deep --sign - "$APP"
 echo "Built $APP"

@@ -20,6 +20,8 @@
     <string>14.0</string>
     <key>LSUIElement</key>
     <true/>
+    <key>NSAppleEventsUsageDescription</key>
+    <string>Brim uses Automation to read and control Spotify and Music when you choose one of them as the player to follow. Brim works without this permission.</string>
     <key>NSHighResolutionCapable</key>
     <true/>
 </dict>
