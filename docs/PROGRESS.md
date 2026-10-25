@@ -133,7 +133,7 @@ could not be automated are listed under **Manual sign-off still needed**.
 
 ### Non-functional checks for M1
 
-- [x] Idle CPU under 0.5% and memory under 80 MB. (Measured 0.0% CPU, ~22 MB RSS while collapsed.)
+- [x] Idle CPU under 0.5% and memory under 80 MB. (Measured 0.0% CPU; ~22 MB RSS in debug, ~50 MB in release after warm-up.)
 - [x] No permission prompt at launch; no network use. (No permission APIs are called and no networking code exists.)
 - [x] Logs appear under subsystem `com.harshshelar.brim`.
 - [ ] Light/dark mode, external display, full-screen app visually checked. (External display behavior verified programmatically; visual appearance still pending.)
@@ -167,7 +167,7 @@ agent process). Run through [`TESTING.md`](TESTING.md).
   file updated.
 - Enabling/disabling the clock — `enabledModules` updated in JSON via the accessibility action.
 - Copy Diagnostics — the clipboard contained version, macOS, screens/notches, settings JSON, and recent log.
-- `ps` — 0.0% CPU, ~22 MB RSS while collapsed.
+- `ps` — 0.0% CPU; ~22 MB RSS in debug and ~50 MB in release while collapsed.
 
 ## Decisions log
 
@@ -210,3 +210,4 @@ agent process). Run through [`TESTING.md`](TESTING.md).
   checkbox's `AXPress`.
 - Verified the window layout, hover/expand/collapse, context menu, settings, persistence and diagnostics against the
   running app (details above). Visual checks and full-screen/hot-plug checks remain for a human.
+- Committed as `7e0b495` (`Milestone 1: notch panel shell (F1–F5)`).
