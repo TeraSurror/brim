@@ -123,7 +123,10 @@ final class NotchWindowManager {
                 model: model,
                 metrics: metrics,
                 timings: timings,
-                scheduler: scheduler
+                scheduler: scheduler,
+                onActiveChange: { [weak model] active in
+                    model?.setPanelActive(screenID: screen.id, active: active)
+                }
             )
         }
 

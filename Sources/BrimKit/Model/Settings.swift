@@ -2,7 +2,7 @@ import Foundation
 
 /// Persisted user settings. Custom decoding keeps old files loadable after a schema bump.
 public struct Settings: Codable, Equatable, Sendable {
-    public static let currentSchemaVersion = 1
+    public static let currentSchemaVersion = 2
     public static let hoverDelayRange: ClosedRange<Double> = 0.05...1.5
     public static let collapseDelayRange: ClosedRange<Double> = 0.1...2.0
     public static let defaultEnabledModules = ["clock"]
@@ -18,6 +18,9 @@ public struct Settings: Codable, Equatable, Sendable {
     public var enabledModules: [String] = Settings.defaultEnabledModules
     /// Show the slim handle and panel on displays without a notch.
     public var showOnNonNotchedDisplays: Bool = true
+    /// Bundle identifier of the player to follow, or nil for whatever macOS reports. Choosing Spotify or
+    /// Music enables the optional Apple Events path; the adapter alone needs no setting.
+    public var preferredPlayerBundleID: String?
 
     public init() {}
 
@@ -35,5 +38,6 @@ public struct Settings: Codable, Equatable, Sendable {
         enabledModules = try container.decodeIfPresent([String].self, forKey: .enabledModules) ?? defaults.enabledModules
         showOnNonNotchedDisplays = try container.decodeIfPresent(Bool.self, forKey: .showOnNonNotchedDisplays)
             ?? defaults.showOnNonNotchedDisplays
+        preferredPlayerBundleID = try container.decodeIfPresent(String.self, forKey: .preferredPlayerBundleID)
     }
 }

@@ -25,6 +25,7 @@ final class SettingsTests: XCTestCase {
         settings.launchAtLogin = true
         settings.enabledModules = ["clock", "media"]
         settings.showOnNonNotchedDisplays = false
+        settings.preferredPlayerBundleID = "com.spotify.client"
 
         store.save(settings)
         XCTAssertEqual(store.load(), settings)
@@ -39,6 +40,19 @@ final class SettingsTests: XCTestCase {
         XCTAssertEqual(settings.enabledModules, ["media"])
         XCTAssertFalse(settings.showOnNonNotchedDisplays)
         XCTAssertEqual(settings.collapseDelay, Settings().collapseDelay)
+    }
+
+    func testSchemaOneFileMigratesToTheCurrentSchema() throws {
+        let data = Data(
+            #"{"schemaVersion":1,"hoverDelay":0.25,"enabledModules":["clock"],"showOnNonNotchedDisplays":false}"#
+                .utf8
+        )
+        let settings = try SettingsMigrator.migrate(data)
+
+        XCTAssertEqual(settings.schemaVersion, Settings.currentSchemaVersion)
+        XCTAssertEqual(settings.hoverDelay, 0.25)
+        XCTAssertFalse(settings.showOnNonNotchedDisplays)
+        XCTAssertNil(settings.preferredPlayerBundleID)
     }
 
     func testDelaysAreClampedToTheirRanges() throws {

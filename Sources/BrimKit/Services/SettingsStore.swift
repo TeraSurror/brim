@@ -6,6 +6,7 @@ public enum SettingsMigrator {
     /// Each step upgrades a raw JSON object from version N to N+1.
     static let steps: [Int: (inout [String: Any]) -> Void] = [
         0: { _ in }, // pre-versioned files only gain the schemaVersion key
+        1: { _ in }, // schema 2 adds preferredPlayerBundleID; nil is the automatic default
     ]
 
     public static func migrate(_ data: Data) throws -> Settings {

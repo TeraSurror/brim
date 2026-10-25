@@ -9,21 +9,37 @@ public final class AppController {
     private let screens: ScreenProviding
     private let scheduler: Scheduling
     private let monitor: PointerMonitoring
+    private let coordinator: NowPlayingCoordinator
     private let windows = WindowPresenter()
     private var windowManager: NotchWindowManager?
     private var cancellables = Set<AnyCancellable>()
 
     public init() {
-        let registry = ModuleRegistry(modules: [ClockModule()])
-        self.screens = NSScreenProvider()
-        self.scheduler = DispatchScheduler()
-        self.monitor = NSEventPointerMonitor()
-        self.model = AppModel(
+        let scheduler = DispatchScheduler()
+        let discovery = InstalledPlayerDiscovery()
+        let coordinator = NowPlayingCoordinator(
+            adapter: MediaAdapterService(),
+            automation: AppleEventsPlayerAutomation(discovery: discovery),
+            discovery: discovery,
+            scheduler: scheduler
+        )
+        let media = MediaModule(service: coordinator, scheduler: scheduler)
+        let model = AppModel(
             store: JSONSettingsStore(),
             loginItems: SMLoginItemService(),
-            registry: registry,
+            registry: ModuleRegistry(modules: [ClockModule(), media]),
             permissions: SystemPermissionService()
         )
+        // The panel's source menu writes through settings so the choice survives a restart.
+        media.onPreferredPlayerChange = { [weak model] sourceID in
+            model?.setPreferredPlayer(sourceID)
+        }
+
+        self.model = model
+        self.coordinator = coordinator
+        self.screens = NSScreenProvider()
+        self.scheduler = scheduler
+        self.monitor = NSEventPointerMonitor()
     }
 
     public func start() {
@@ -33,7 +49,19 @@ public final class AppController {
         model.quit = { NSApp.terminate(nil) }
         model.diagnostics = { [weak self] in
             guard let self else { return "" }
-            return Diagnostics.report(settings: self.model.settings, screens: self.screens)
+            let track = self.coordinator.current.map {
+                "\($0.title) — \($0.source.name) (\($0.isPlaying ? "playing" : "paused"))"
+            }
+            return Diagnostics.report(
+                settings: self.model.settings,
+                screens: self.screens,
+                media: MediaDiagnostics(
+                    helperBundled: MediaAdapterLocation.bundled() != nil,
+                    helperAvailable: self.coordinator.isAvailable,
+                    followedPlayer: self.model.settings.preferredPlayerBundleID,
+                    track: track
+                )
+            )
         }
 
         let manager = NotchWindowManager(

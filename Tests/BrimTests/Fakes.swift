@@ -202,6 +202,7 @@ final class FakeModule: BrimModule {
     let permissionExplanation: String
     private(set) var isEnabled = false
     private(set) var enableHistory: [Bool] = []
+    private(set) var panelActiveHistory: [Bool] = []
 
     init(id: String, permissions: [PermissionKind] = [], explanation: String = "Explanation") {
         self.id = id
@@ -213,6 +214,32 @@ final class FakeModule: BrimModule {
     func setEnabled(_ enabled: Bool) {
         isEnabled = enabled
         enableHistory.append(enabled)
+    }
+
+    func setPanelActive(_ active: Bool) {
+        panelActiveHistory.append(active)
+    }
+
+    func compactView() -> AnyView { AnyView(EmptyView()) }
+    func expandedView() -> AnyView { AnyView(EmptyView()) }
+}
+
+
+@MainActor
+final class FakeMediaControllingModule: BrimModule, MediaModuleControlling {
+    let id = "media"
+    let title = "Now Playing"
+    let symbolName = "play.circle"
+    let requiredPermissions: [PermissionKind] = []
+    let permissionExplanation = ""
+    var sources: [NowPlayingSource] = [.music]
+    private(set) var isEnabled = false
+    private(set) var appliedPreferences: [String?] = []
+
+    func setEnabled(_ enabled: Bool) { isEnabled = enabled }
+
+    func applyPreferredPlayer(_ sourceID: String?) {
+        appliedPreferences.append(sourceID)
     }
 
     func compactView() -> AnyView { AnyView(EmptyView()) }

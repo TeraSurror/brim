@@ -17,6 +17,15 @@ public protocol BrimModule: AnyObject, Identifiable {
     var isEnabled: Bool { get }
     func setEnabled(_ enabled: Bool)
 
+    /// True while any panel on any screen is open (including the peek). Modules that own a monitor start
+    /// and stop here so a collapsed notch costs nothing.
+    func setPanelActive(_ active: Bool)
+
     func compactView() -> AnyView
     func expandedView() -> AnyView
+
+}
+
+public extension BrimModule {
+    func setPanelActive(_ active: Bool) {}
 }

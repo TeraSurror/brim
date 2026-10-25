@@ -35,4 +35,11 @@ public final class ModuleRegistry {
         let enabled = Set(enabledModules.map(\.id))
         return allModules.filter { !enabled.contains($0.id) }
     }
+
+    /// Forwards the panel lifecycle to every module, enabled or not; disabled modules ignore it.
+    public func setPanelActive(_ active: Bool) {
+        for module in allModules {
+            module.setPanelActive(active)
+        }
+    }
 }

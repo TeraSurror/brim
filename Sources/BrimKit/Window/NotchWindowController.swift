@@ -20,8 +20,10 @@ final class NotchWindowController {
     private let panelState: PanelStateModel
     private let machine: PanelStateMachine
     private let scheduler: Scheduling
+    private let onActiveChange: (Bool) -> Void
 
     private var pendingTasks: [TaskHandle] = []
+    private var reportedActive = false
     /// Incremented for every visual transition so late callbacks from the previous one do nothing.
     private var generation = 0
 
@@ -30,7 +32,8 @@ final class NotchWindowController {
         model: AppModel,
         metrics: PanelMetrics,
         timings: PanelTimings,
-        scheduler: Scheduling
+        scheduler: Scheduling,
+        onActiveChange: @escaping (Bool) -> Void
     ) {
         let geometry = PanelGeometry(screen: screen, metrics: metrics)
         let panelState = PanelStateModel()
@@ -59,6 +62,7 @@ final class NotchWindowController {
         self.panelState = panelState
         self.machine = machine
         self.scheduler = scheduler
+        self.onActiveChange = onActiveChange
 
         // A notched screen's collapsed window is invisible and sits right over the notch; letting it take
         // mouse events would steal clicks from the menu bar. The global pointer monitor still sees hovers.
@@ -101,6 +105,7 @@ final class NotchWindowController {
 
     func close() {
         cancelPendingTasks()
+        reportActive(false)
         window.orderOut(nil)
         window.close()
     }
@@ -134,11 +139,14 @@ final class NotchWindowController {
             self.panelState.state = .collapsed
             self.window.alphaValue = self.geometry.isNotched ? 0 : 1
             self.window.ignoresMouseEvents = self.geometry.isNotched
+            // The panel is no longer visible; modules can stop their monitors now.
+            self.reportActive(false)
         }
     }
 
     private func peek(generation: Int) {
         panelState.state = .peek
+        reportActive(true)
         window.alphaValue = 1
         window.ignoresMouseEvents = false
         animateFrame(to: geometry.frame(for: .peek), duration: Self.peekDuration)
@@ -156,6 +164,7 @@ final class NotchWindowController {
 
     private func expand(generation: Int) {
         panelState.state = .expanded
+        reportActive(true)
         window.alphaValue = 1
         window.ignoresMouseEvents = false
         animateFrame(to: geometry.frame(for: .expanded), duration: Self.expandDuration)
@@ -174,6 +183,14 @@ final class NotchWindowController {
                 self.panelState.content = .expanded
             }
         }
+    }
+
+    /// Collapses duplicate reports. The panel is active from the first peek until the collapse animation
+    /// has finished, so the media helper is never stopped while its artwork is still on screen.
+    private func reportActive(_ active: Bool) {
+        guard active != reportedActive else { return }
+        reportedActive = active
+        onActiveChange(active)
     }
 
     // MARK: - Timing

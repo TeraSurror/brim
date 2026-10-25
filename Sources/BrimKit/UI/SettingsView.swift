@@ -62,6 +62,52 @@ private struct GeneralSettingsTab: View {
             }
 
             Section {
+                Picker(
+                    "Follow",
+                    selection: Binding(
+                        get: { model.settings.preferredPlayerBundleID ?? "" },
+                        set: { value in
+                            let sourceID = value.isEmpty ? nil : value
+                            model.setPreferredPlayer(sourceID)
+                            // Choosing a player is the moment Automation becomes useful; the footer above
+                            // is the in-app explanation and macOS only asks for a running player.
+                            if sourceID != nil {
+                                Task { await model.requestAutomationPermission() }
+                            }
+                        }
+                    )
+                ) {
+                    Text("Automatic (macOS)").tag("")
+                    ForEach(model.mediaSources) { source in
+                        Text(source.name).tag(source.id)
+                    }
+                }
+                .accessibilityLabel("Player to follow")
+
+                HStack(spacing: 8) {
+                    Image(systemName: automationStatus.symbol)
+                        .foregroundStyle(automationStatus.color)
+                        .accessibilityHidden(true)
+                    Text(automationStatus.label)
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                    Spacer(minLength: 8)
+                    if model.automationStatus != .granted {
+                        Button("Grant Automation…") {
+                            Task { await model.requestAutomationPermission() }
+                        }
+                        .accessibilityLabel("Grant Automation permission")
+                    }
+                }
+            } header: {
+                Text("Media")
+            } footer: {
+                Text("Automatic follows whatever macOS reports as Now Playing, including Safari. Choosing Spotify or Music lets Brim follow that player when several are playing; macOS asks for Automation at that point. If it isn't granted, Brim keeps following macOS.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            Section {
                 Toggle(
                     "Launch at login",
                     isOn: Binding(
@@ -92,11 +138,29 @@ private struct GeneralSettingsTab: View {
             }
         }
         .formStyle(.grouped)
-        .onAppear { model.refreshLaunchAtLogin() }
+        .onAppear {
+            model.refreshLaunchAtLogin()
+            model.refreshAutomationStatus()
+        }
     }
 
     private func milliseconds(_ seconds: Double) -> Int {
         Int((seconds * 1000).rounded())
+    }
+
+    private var automationStatus: (label: String, symbol: String, color: Color) {
+        switch model.automationStatus {
+        case .granted:
+            ("Automation allowed", "checkmark.circle.fill", .green)
+        case .denied:
+            ("Automation denied — following macOS only", "exclamationmark.circle.fill", .orange)
+        case .restricted:
+            ("Automation restricted by macOS", "exclamationmark.circle.fill", .orange)
+        case .unavailable:
+            ("Start Spotify or Music to grant Automation", "info.circle", .secondary)
+        case .notDetermined:
+            ("Automation not granted yet", "circle.dashed", .secondary)
+        }
     }
 }
 

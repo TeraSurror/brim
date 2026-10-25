@@ -122,4 +122,54 @@ final class AppModelTests: XCTestCase {
         model.settings.hoverDelay = 0.5
         XCTAssertEqual(store.stored.hoverDelay, 0.5)
     }
+
+    func testPanelActivityIsForwardedOnceAcrossScreens() {
+        model.setPanelActive(screenID: "built-in", active: true)
+        XCTAssertEqual(clock.panelActiveHistory, [true])
+
+        model.setPanelActive(screenID: "external", active: true)
+        XCTAssertEqual(clock.panelActiveHistory, [true])
+
+        model.setPanelActive(screenID: "built-in", active: false)
+        XCTAssertEqual(clock.panelActiveHistory, [true])
+
+        model.setPanelActive(screenID: "external", active: false)
+        XCTAssertEqual(clock.panelActiveHistory, [true, false])
+    }
+
+    func testPreferredPlayerIsForwardedAndPersisted() {
+        let mediaModule = FakeMediaControllingModule()
+        let scoped = AppModel(
+            store: store,
+            loginItems: loginItems,
+            registry: ModuleRegistry(modules: [mediaModule]),
+            permissions: permissions
+        )
+
+        scoped.setPreferredPlayer("com.apple.Music")
+
+        XCTAssertEqual(store.stored.preferredPlayerBundleID, "com.apple.Music")
+        XCTAssertEqual(mediaModule.appliedPreferences.last, "com.apple.Music")
+        XCTAssertEqual(scoped.mediaSources, [.music])
+
+        scoped.setPreferredPlayer("")
+
+        XCTAssertNil(store.stored.preferredPlayerBundleID)
+        XCTAssertNil(mediaModule.appliedPreferences.last ?? nil)
+    }
+
+    func testRequestingAutomationUpdatesTheStatus() async {
+        permissions.requestResult = .granted
+        await model.requestAutomationPermission()
+
+        XCTAssertEqual(model.automationStatus, .granted)
+        XCTAssertEqual(permissions.requests, [.automation])
+    }
+
+    func testEnablingTheMediaModuleRefreshesAutomationStatus() async {
+        permissions.requestResult = .denied
+        await model.enableModuleAfterPermissionExplanation("media")
+
+        XCTAssertEqual(model.automationStatus, .denied)
+    }
 }

@@ -63,10 +63,30 @@ public final class MediaAdapterService: MediaAdapterStreaming {
     private let location: MediaAdapterLocation?
     private var stream: Process?
     private var streamPipe: Pipe?
-    private var stderrTask: Task<Void, Never>?
-    private var readerTask: Task<Void, Never>?
+    private var stderrPipe: Pipe?
+    private var reader: AdapterLineReader?
     private var generation = 0
     private var runningCommands: [Process] = []
+
+    /// Runs the helper under a shell that watches Brim's PID. A normal quit terminates the supervisor;
+    /// if Brim crashes or is killed, the supervisor notices within a second and takes the helper with it,
+    /// so a stale 25 MB Perl process can never outlive the app.
+    private static let supervisorScript = """
+        parent="$1"
+        shift
+        "$@" &
+        child=$!
+        trap 'kill "$child" 2>/dev/null; wait "$child" 2>/dev/null; exit 0' TERM INT HUP
+        while kill -0 "$child" 2>/dev/null; do
+            if ! kill -0 "$parent" 2>/dev/null; then
+                kill "$child" 2>/dev/null
+                exit 0
+            fi
+            sleep 1
+        done
+        wait "$child"
+        exit $?
+        """
 
     public init(location: MediaAdapterLocation? = MediaAdapterLocation.bundled()) {
         self.location = location
@@ -84,8 +104,13 @@ public final class MediaAdapterService: MediaAdapterStreaming {
         let generation = self.generation
 
         let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/perl")
+        process.executableURL = URL(fileURLWithPath: "/bin/sh")
         process.arguments = [
+            "-c",
+            Self.supervisorScript,
+            "brim-media-supervisor",
+            String(ProcessInfo.processInfo.processIdentifier),
+            "/usr/bin/perl",
             location.scriptURL.path,
             location.frameworkURL.path,
             "stream",
@@ -107,7 +132,8 @@ public final class MediaAdapterService: MediaAdapterStreaming {
 
         stream = process
         streamPipe = stdout
-        Log.media.info("MediaRemote helper started (pid \(process.processIdentifier, privacy: .public))")
+        stderrPipe = stderr
+        Log.media.info("MediaRemote helper started (supervisor pid \(process.processIdentifier, privacy: .public))")
 
         process.terminationHandler = { [weak self] finished in
             let status = finished.terminationStatus
@@ -116,36 +142,33 @@ public final class MediaAdapterService: MediaAdapterStreaming {
             }
         }
 
-        stderrTask = Self.drain(stderr.fileHandleForReading)
+        let reader = AdapterLineReader { [weak self] event in
+            Task { @MainActor in
+                self?.handle(event, generation: generation)
+            }
+        }
+        reader.start(stdout.fileHandleForReading)
+        self.reader = reader
 
-        let handle = stdout.fileHandleForReading
-        readerTask = Task.detached(priority: .utility) { [weak self] in
-            var decoder = MediaAdapterDecoder()
-            do {
-                for try await line in handle.bytes.lines {
-                    let event = decoder.consume(line: line)
-                    switch event {
-                    case .ignored:
-                        continue
-                    case .noMedia:
-                        await self?.deliver(nil, generation: generation)
-                    case .update(let track):
-                        await self?.deliver(track, generation: generation)
-                    }
-                }
-            } catch {
-                // Closing the pipe during stop is expected; a read error while running is logged below.
-                await self?.readerFailed(generation: generation)
+        // Drain stderr so the helper can never block on a full pipe; the messages are diagnostics only.
+        stderrPipe?.fileHandleForReading.readabilityHandler = { handle in
+            let data = handle.availableData
+            if data.isEmpty {
+                handle.readabilityHandler = nil
+                return
+            }
+            if let line = String(data: data, encoding: .utf8) {
+                Log.media.debug("adapter: \(line, privacy: .public)")
             }
         }
     }
 
     public func stop() {
         generation += 1
-        readerTask?.cancel()
-        readerTask = nil
-        stderrTask?.cancel()
-        stderrTask = nil
+        streamPipe?.fileHandleForReading.readabilityHandler = nil
+        stderrPipe?.fileHandleForReading.readabilityHandler = nil
+        reader?.stop()
+        reader = nil
 
         if let stream {
             stream.terminationHandler = nil
@@ -153,8 +176,10 @@ public final class MediaAdapterService: MediaAdapterStreaming {
             Log.media.info("MediaRemote helper stopped")
         }
         stream = nil
-        try? streamPipe?.fileHandleForReading.close()
+        // Do not close the read ends while a handler may still be reading; terminating the helper closes
+        // the write ends and the handlers finish with EOF.
         streamPipe = nil
+        stderrPipe = nil
     }
 
     public func send(_ command: PlayerCommand) {
@@ -203,38 +228,73 @@ public final class MediaAdapterService: MediaAdapterStreaming {
         }
     }
 
-    private func deliver(_ track: NowPlaying?, generation: Int) {
+    private func handle(_ event: MediaAdapterEvent, generation: Int) {
         guard generation == self.generation, stream != nil else { return }
-        onUpdate?(track)
+        switch event {
+        case .ignored:
+            return
+        case .noMedia:
+            onUpdate?(nil)
+        case .update(let track):
+            onUpdate?(track)
+        }
     }
 
     private func streamExited(status: Int32, generation: Int) {
         guard generation == self.generation else { return }
+        streamPipe?.fileHandleForReading.readabilityHandler = nil
+        stderrPipe?.fileHandleForReading.readabilityHandler = nil
+        reader?.stop()
+        reader = nil
         stream = nil
         streamPipe = nil
-        readerTask?.cancel()
-        readerTask = nil
-        stderrTask?.cancel()
-        stderrTask = nil
+        stderrPipe = nil
         Log.media.error("MediaRemote helper exited with status \(status, privacy: .public)")
         onFailure?("The MediaRemote helper stopped (exit \(status)).")
     }
+}
 
-    private func readerFailed(generation: Int) {
-        guard generation == self.generation, stream != nil else { return }
-        Log.media.error("MediaRemote helper output closed unexpectedly")
-        onFailure?("The MediaRemote helper output stopped.")
+/// Splits the helper's stdout into newline-delimited JSON on a private queue, keeping the decoder state off
+/// the main actor. FileHandle readability handlers are used instead of an async byte sequence so stopping
+/// the helper never has to close a descriptor that a reader is blocked on.
+private final class AdapterLineReader: @unchecked Sendable {
+    private let queue = DispatchQueue(label: "com.harshshelar.brim.media-adapter-reader")
+    private let onEvent: (MediaAdapterEvent) -> Void
+    private var buffer = Data()
+    private var decoder = MediaAdapterDecoder()
+    private var handle: FileHandle?
+
+    init(onEvent: @escaping (MediaAdapterEvent) -> Void) {
+        self.onEvent = onEvent
     }
 
-    private nonisolated static func drain(_ handle: FileHandle) -> Task<Void, Never> {
-        Task.detached(priority: .utility) {
-            do {
-                for try await line in handle.bytes.lines where !line.isEmpty {
-                    Log.media.debug("adapter: \(line, privacy: .public)")
-                }
-            } catch {
-                // The pipe closes when the helper exits; nothing useful to report here.
+    func start(_ handle: FileHandle) {
+        self.handle = handle
+        handle.readabilityHandler = { [weak self] handle in
+            let data = handle.availableData
+            guard let self else { return }
+            if data.isEmpty {
+                handle.readabilityHandler = nil
+                return
             }
+            self.queue.async {
+                self.consume(data)
+            }
+        }
+    }
+
+    func stop() {
+        handle?.readabilityHandler = nil
+        handle = nil
+    }
+
+    private func consume(_ data: Data) {
+        buffer.append(data)
+        while let newline = buffer.firstIndex(of: 0x0A) {
+            let lineData = buffer[buffer.startIndex..<newline]
+            buffer.removeSubrange(buffer.startIndex...newline)
+            guard let line = String(data: lineData, encoding: .utf8), !line.isEmpty else { continue }
+            onEvent(decoder.consume(line: line))
         }
     }
 }

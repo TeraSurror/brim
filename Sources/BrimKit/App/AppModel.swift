@@ -11,12 +11,20 @@ public final class AppModel: ObservableObject {
             guard settings != oldValue else { return }
             store.save(settings)
             syncModules()
+            if settings.preferredPlayerBundleID != oldValue.preferredPlayerBundleID {
+                syncPreferredPlayer()
+            }
         }
     }
 
     @Published public private(set) var launchAtLogin: Bool
     @Published public var launchAtLoginError: String?
     @Published public private(set) var activeModules: [any BrimModule] = []
+    @Published public private(set) var automationStatus: PermissionStatus = .notDetermined
+
+    /// Screen IDs whose panel is peek or expanded. Modules see one flat "active" flag so a second display
+    /// keeping its panel open never stops the first display's monitors.
+    private var activePanels: Set<String> = []
 
     /// Set by the composition root; the UI never calls AppKit or window APIs itself.
     public var openSettings: () -> Void = {}
@@ -42,6 +50,8 @@ public final class AppModel: ObservableObject {
         // The system login item is the source of truth; a settings file can be stale.
         self.launchAtLogin = loginItems.isEnabled
         syncModules()
+        syncPreferredPlayer()
+        refreshAutomationStatus()
         if settings.launchAtLogin != launchAtLogin {
             settings.launchAtLogin = launchAtLogin
             store.save(settings)
@@ -52,6 +62,26 @@ public final class AppModel: ObservableObject {
 
     public var allModules: [any BrimModule] { registry.allModules }
     public var disabledModules: [any BrimModule] { registry.disabledModules }
+
+    /// Installed players for the Follow picker. Empty when neither Spotify nor Music is installed.
+    public var mediaSources: [NowPlayingSource] {
+        registry.allModules
+            .compactMap { $0 as? MediaModuleControlling }
+            .first?.sources ?? []
+    }
+
+    /// Peek and expanded both count as "a panel is open"; the media module starts its helper here.
+    public func setPanelActive(screenID: String, active: Bool) {
+        let wasActive = !activePanels.isEmpty
+        if active {
+            activePanels.insert(screenID)
+        } else {
+            activePanels.remove(screenID)
+        }
+        let isActive = !activePanels.isEmpty
+        guard wasActive != isActive else { return }
+        registry.setPanelActive(isActive)
+    }
 
     private func syncModules() {
         registry.apply(enabledIDs: settings.enabledModules)
@@ -82,6 +112,7 @@ public final class AppModel: ObservableObject {
             }
         }
         applyModuleEnabled(id, true)
+        refreshAutomationStatus()
     }
 
     private func applyModuleEnabled(_ id: String, _ enabled: Bool) {
@@ -107,6 +138,32 @@ public final class AppModel: ObservableObject {
 
     public func module(id: String) -> (any BrimModule)? {
         registry.module(id: id)
+    }
+
+    /// Applies the persisted player choice to whichever module knows how to follow one.
+    private func syncPreferredPlayer() {
+        for module in registry.allModules {
+            (module as? MediaModuleControlling)?.applyPreferredPlayer(settings.preferredPlayerBundleID)
+        }
+    }
+
+    public func setPreferredPlayer(_ sourceID: String?) {
+        let normalized = sourceID?.isEmpty == true ? nil : sourceID
+        guard settings.preferredPlayerBundleID != normalized else { return }
+        settings.preferredPlayerBundleID = normalized
+    }
+
+    // MARK: - Permissions
+
+    public func refreshAutomationStatus() {
+        automationStatus = permissions.status(for: .automation)
+    }
+
+    /// Only called from a button or after the explanation sheet. Never at launch.
+    public func requestAutomationPermission() async {
+        let status = await permissions.request(.automation)
+        automationStatus = status
+        Log.general.info("Automation permission is now \(status.rawValue, privacy: .public)")
     }
 
     // MARK: - Launch at login

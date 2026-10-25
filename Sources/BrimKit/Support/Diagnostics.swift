@@ -1,6 +1,13 @@
 import Foundation
 import OSLog
 
+struct MediaDiagnostics {
+    let helperBundled: Bool
+    let helperAvailable: Bool
+    let followedPlayer: String?
+    let track: String?
+}
+
 @MainActor
 enum Diagnostics {
     static var appVersion: String {
@@ -10,7 +17,11 @@ enum Diagnostics {
         return "\(version) (\(build))"
     }
 
-    static func report(settings: Settings, screens: ScreenProviding) -> String {
+    static func report(
+        settings: Settings,
+        screens: ScreenProviding,
+        media: MediaDiagnostics? = nil
+    ) -> String {
         var lines = [
             "Brim \(appVersion)",
             "macOS \(ProcessInfo.processInfo.operatingSystemVersionString)",
@@ -26,6 +37,13 @@ enum Diagnostics {
                 "  \(Int(screen.frame.width))×\(Int(screen.frame.height)) at "
                     + "(\(Int(screen.frame.minX)), \(Int(screen.frame.minY))), \(notch), topInset \(Int(screen.topInset))"
             )
+        }
+
+        if let media {
+            lines += ["", "Media:"]
+            lines.append("  helper: bundled \(media.helperBundled), available \(media.helperAvailable)")
+            lines.append("  following: \(media.followedPlayer ?? "Automatic (macOS)")")
+            lines.append("  now playing: \(media.track ?? "nothing")")
         }
 
         let encoder = JSONEncoder()
