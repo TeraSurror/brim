@@ -23,7 +23,6 @@ public protocol BrimModule: AnyObject, Identifiable {
 
     func compactView() -> AnyView
     func expandedView() -> AnyView
-
 }
 
 public extension BrimModule {
