@@ -46,9 +46,15 @@ struct PanelView: View {
                 ZStack(alignment: .top) {
                     if panel.content == .expanded {
                         // Keep the layout at its target size so the window growth does not reflow it.
-                        expandedContent
-                            .frame(width: expandedSize.width, height: expandedSize.height, alignment: .top)
-                            .transition(contentTransition)
+                        Group {
+                            if let kinds = panel.dropKinds {
+                                dropContent(kinds)
+                            } else {
+                                expandedContent
+                            }
+                        }
+                        .frame(width: expandedSize.width, height: expandedSize.height, alignment: .top)
+                        .transition(contentTransition)
                     }
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
@@ -161,6 +167,20 @@ struct PanelView: View {
         .padding(.bottom, 18)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .accessibilityElement(children: .contain)
+    }
+
+    /// One zone per module that takes what is being dragged.
+    private func dropContent(_ kinds: Set<DropKind>) -> some View {
+        let modules = model.activeModules.filter { !$0.acceptedDrops.isDisjoint(with: kinds) }
+        return HStack(spacing: PanelMetrics.moduleSpacing) {
+            ForEach(modules, id: \.id) { module in
+                DropZoneView(module: module, kinds: kinds)
+            }
+        }
+        .padding(.horizontal, PanelMetrics.panelHorizontalPadding)
+        .padding(.top, topPadding)
+        .padding(.bottom, 18)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
     private var emptyModules: some View {

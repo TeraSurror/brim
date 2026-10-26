@@ -46,6 +46,8 @@ final class FakePointer: PointerMonitoring {
     var onMove: ((CGPoint) -> Void)?
     var onLeftClick: ((CGPoint) -> Void)?
     var onScroll: ((ScrollSample) -> Void)?
+    var onDrag: ((CGPoint) -> Void)?
+    var onLeftMouseUp: ((CGPoint) -> Void)?
     private(set) var running = false
 
     func start() { running = true }

@@ -78,6 +78,34 @@ final class PanelStateMachineTests: XCTestCase {
         XCTAssertFalse(machine.acceptsSwipe(at: earPoint))
     }
 
+    func testAContentDragOpensAtOnceOverTheNotchEvenInClickMode() {
+        machine.update(timings: PanelTimings(hoverDelay: 0.15, collapseDelay: 0.4, opensOnHover: false))
+        machine.dragMoved(to: away)
+        XCTAssertEqual(machine.state, .collapsed)
+
+        machine.dragMoved(to: notchPoint)
+        XCTAssertEqual(machine.state, .expanded)
+    }
+
+    func testDraggingOutOfThePanelCollapsesAfterTheDelay() {
+        machine.dragMoved(to: notchPoint)
+        machine.dragMoved(to: CGPoint(x: 756, y: 150))
+        scheduler.advance(by: 1)
+        XCTAssertEqual(machine.state, .expanded)
+
+        machine.dragMoved(to: away)
+        scheduler.advance(by: 0.39)
+        XCTAssertEqual(machine.state, .expanded)
+        scheduler.advance(by: 0.02)
+        XCTAssertEqual(machine.state, .collapsed)
+    }
+
+    func testAHiddenDisplayNeverOpensForADrag() {
+        machine.isEnabled = false
+        machine.dragMoved(to: notchPoint)
+        XCTAssertEqual(machine.state, .collapsed)
+    }
+
     func testKeyboardOpenStaysOpenWhenThePointerLeaves() {
         machine.expandFromKeyboard()
         XCTAssertEqual(machine.state, .expanded)

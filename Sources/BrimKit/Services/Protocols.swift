@@ -31,6 +31,9 @@ public protocol PointerMonitoring: AnyObject {
     @MainActor var onMove: ((CGPoint) -> Void)? { get set }
     @MainActor var onLeftClick: ((CGPoint) -> Void)? { get set }
     @MainActor var onScroll: ((ScrollSample) -> Void)? { get set }
+    /// Mouse-dragged events. Kept apart from `onMove` so dragging a window past the notch never hovers it.
+    @MainActor var onDrag: ((CGPoint) -> Void)? { get set }
+    @MainActor var onLeftMouseUp: ((CGPoint) -> Void)? { get set }
     @MainActor func start()
     @MainActor func stop()
 }

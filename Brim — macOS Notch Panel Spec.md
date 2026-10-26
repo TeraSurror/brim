@@ -310,9 +310,9 @@ from the keyboard, a panel that can take focus, and a drop target on the notch. 
   pasteboard and mouse-drag events; no permission is needed.
 - [ ] Dropping on a zone hands the files or text to that module. Dropping elsewhere, or dragging out of the panel
   (with the usual exit slop and collapse delay), does nothing and collapses it.
-- [ ] Modules declare the drop types they accept; the shell knows nothing about prompts or files. With no module
+- [x] Modules declare the drop types they accept; the shell knows nothing about prompts or files. With no module
   accepting drops, a drag never opens the panel. The first zone arrives with F20.
-- [ ] Displays hidden by F14 never open for a drag.
+- [x] Displays hidden by F14 never open for a drag.
 
 ## Milestone 3, continued: quick prompt and send to assistant
 

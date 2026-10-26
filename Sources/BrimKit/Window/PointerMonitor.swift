@@ -8,6 +8,8 @@ public final class NSEventPointerMonitor: PointerMonitoring {
     public var onMove: ((CGPoint) -> Void)?
     public var onLeftClick: ((CGPoint) -> Void)?
     public var onScroll: ((ScrollSample) -> Void)?
+    public var onDrag: ((CGPoint) -> Void)?
+    public var onLeftMouseUp: ((CGPoint) -> Void)?
 
     private var globalMonitor: Any?
     private var localMonitor: Any?
@@ -16,7 +18,7 @@ public final class NSEventPointerMonitor: PointerMonitoring {
 
     public func start() {
         guard globalMonitor == nil, localMonitor == nil else { return }
-        let mask: NSEvent.EventTypeMask = [.mouseMoved, .leftMouseDown, .scrollWheel]
+        let mask: NSEvent.EventTypeMask = [.mouseMoved, .leftMouseDown, .leftMouseDragged, .leftMouseUp, .scrollWheel]
 
         globalMonitor = NSEvent.addGlobalMonitorForEvents(matching: mask) { [weak self] event in
             MainActor.assumeIsolated { self?.handle(event) }
@@ -41,6 +43,10 @@ public final class NSEventPointerMonitor: PointerMonitoring {
             onLeftClick?(point)
         case .scrollWheel:
             onScroll?(Self.sample(from: event, at: point))
+        case .leftMouseDragged:
+            onDrag?(point)
+        case .leftMouseUp:
+            onLeftMouseUp?(point)
         default:
             onMove?(point)
         }

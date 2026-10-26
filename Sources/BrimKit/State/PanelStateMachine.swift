@@ -91,6 +91,18 @@ public final class PanelStateMachine {
         }
     }
 
+    /// A content drag reaching the notch opens the panel at once, whatever the open mode, so there is
+    /// somewhere to drop. Once open it behaves like a hover: dragging out collapses after the delay.
+    public func dragMoved(to point: CGPoint) {
+        guard isEnabled else { return }
+        if state == .collapsed, isOverCollapsed(point) {
+            lastPoint = point
+            expandNow()
+        } else {
+            pointerMoved(to: point)
+        }
+    }
+
     /// True when a horizontal swipe here should reach the live module: the ears are showing and the panel
     /// is closed.
     public func acceptsSwipe(at point: CGPoint) -> Bool {

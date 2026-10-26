@@ -13,6 +13,8 @@ final class PanelStateModel: ObservableObject {
     @Published var showsLiveShape: Bool
     /// The module's ear views inside the live shape.
     @Published var showsLiveContent: Bool
+    /// Set while a content drag holds the panel open: the panel shows drop zones instead of the cards.
+    @Published var dropKinds: Set<DropKind>?
 
     init(
         state: PanelState = .collapsed,

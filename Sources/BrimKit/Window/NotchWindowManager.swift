@@ -25,6 +25,7 @@ final class NotchWindowManager {
     private var screenSignature = ""
     private var cancellables = Set<AnyCancellable>()
     private var gestures = GestureInterpreter()
+    private var drag = DragTracker()
 
     init(
         model: AppModel,
@@ -46,6 +47,8 @@ final class NotchWindowManager {
         monitor.onMove = { [weak self] point in self?.pointerMoved(to: point) }
         monitor.onLeftClick = { [weak self] point in self?.clicked(at: point) }
         monitor.onScroll = { [weak self] sample in self?.scrolled(sample) }
+        monitor.onDrag = { [weak self] point in self?.dragged(to: point) }
+        monitor.onLeftMouseUp = { [weak self] _ in self?.dragEnded() }
         monitor.start()
 
         fullScreen.onChange = { [weak self] covered in self?.setFullScreen(covered) }
@@ -149,6 +152,7 @@ final class NotchWindowManager {
     }
 
     private func clicked(at point: CGPoint) {
+        drag.mouseDown(changeCount: NSPasteboard(name: .drag).changeCount)
         for controller in controllers.values {
             controller.clicked(at: point)
         }
@@ -167,6 +171,38 @@ final class NotchWindowManager {
             guard controllers.values.contains(where: { $0.acceptsSwipe(at: point) }) else { return }
             model.liveModule?.handleSwipe(gesture)
         }
+    }
+
+    // MARK: - Drag and drop
+
+    private func dragged(to point: CGPoint) {
+        guard let kinds = drag.dragged(
+            changeCount: NSPasteboard(name: .drag).changeCount,
+            types: Self.dragKinds
+        ) else { return }
+        let accepted = kinds.intersection(model.activeModules.reduce(into: Set<DropKind>()) {
+            $0.formUnion($1.acceptedDrops)
+        })
+        guard !accepted.isEmpty else { return }
+        for controller in controllers.values {
+            controller.dragMoved(to: point, kinds: accepted)
+        }
+    }
+
+    private func dragEnded() {
+        drag.mouseUp()
+        for controller in controllers.values {
+            controller.dragEnded()
+        }
+    }
+
+    /// Only the types are read; the contents stay untouched until a module receives a drop.
+    private static func dragKinds() -> Set<DropKind> {
+        let types = NSPasteboard(name: .drag).types ?? []
+        var kinds: Set<DropKind> = []
+        if types.contains(.fileURL) { kinds.insert(.files) }
+        if types.contains(.string) { kinds.insert(.text) }
+        return kinds
     }
 
     // MARK: - Screens

@@ -25,6 +25,7 @@ final class NotchWindowController {
     private let onActiveChange: (Bool) -> Void
 
     private var pendingTasks: [TaskHandle] = []
+    private var dropEndTask: TaskHandle?
     private var reportedActive = false
     private var isHidden = false
     /// Opened by the shortcut: the window may hold keyboard focus until the panel closes.
@@ -116,6 +117,26 @@ final class NotchWindowController {
         machine.scrolled(gesture, at: point)
     }
 
+    /// A content drag that some module accepts. Opens into drop zones when it reaches the notch.
+    func dragMoved(to point: CGPoint, kinds: Set<DropKind>) {
+        dropEndTask?.cancel()
+        dropEndTask = nil
+        machine.dragMoved(to: point)
+        if machine.state == .expanded, panelState.dropKinds != kinds {
+            panelState.dropKinds = kinds
+        }
+    }
+
+    /// The drop lands on mouse-up, possibly after this runs, so the zones stay a moment longer than the drag.
+    func dragEnded() {
+        guard panelState.dropKinds != nil else { return }
+        dropEndTask?.cancel()
+        dropEndTask = scheduler.schedule(after: 0.5) { [weak self] in
+            self?.dropEndTask = nil
+            self?.panelState.dropKinds = nil
+        }
+    }
+
     func acceptsSwipe(at point: CGPoint) -> Bool {
         machine.acceptsSwipe(at: point)
     }
@@ -203,6 +224,7 @@ final class NotchWindowController {
 
     func close() {
         cancelPendingTasks()
+        dropEndTask?.cancel()
         reportActive(false)
         window.orderOut(nil)
         window.close()
@@ -245,6 +267,7 @@ final class NotchWindowController {
         let finish: () -> Void = { [weak self] in
             guard let self, self.machine.state == .collapsed else { return }
             self.panelState.state = .collapsed
+            self.panelState.dropKinds = nil
             self.panelState.showsLiveShape = self.machine.isLive
             self.panelState.showsLiveContent = self.machine.isLive
             self.applyCollapsedWindowState()

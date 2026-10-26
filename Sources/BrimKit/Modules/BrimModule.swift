@@ -31,6 +31,12 @@ public protocol BrimModule: AnyObject, Identifiable {
     /// A horizontal swipe over the ears while this module's activity is shown. Most modules ignore it.
     func handleSwipe(_ gesture: ScrollGesture)
 
+    /// What can be dropped on this module from the notch. Empty for none; the panel then shows no zone for it.
+    var acceptedDrops: Set<DropKind> { get }
+    /// The label on the module's drop zone, such as "Ask Claude".
+    var dropTitle: String { get }
+    func handleDrop(_ payload: DropPayload)
+
     func expandedView() -> AnyView
 }
 
@@ -41,4 +47,8 @@ public extension BrimModule {
     var liveActivityPublisher: AnyPublisher<LiveActivity?, Never> { Just(nil).eraseToAnyPublisher() }
     func liveView(_ edge: LiveActivityEdge) -> AnyView { AnyView(EmptyView()) }
     func handleSwipe(_ gesture: ScrollGesture) {}
+
+    var acceptedDrops: Set<DropKind> { [] }
+    var dropTitle: String { title }
+    func handleDrop(_ payload: DropPayload) {}
 }

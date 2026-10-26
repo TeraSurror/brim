@@ -330,6 +330,10 @@ A scratch app put its own window into native full screen on each display while B
 | F17 | Scroll up with the pointer on the panel's top band (beside the notch). | The panel closes. Scrolling inside the agent list scrolls the list and keeps the panel open. |
 | F17 | While media plays and the panel is closed, swipe left over the ears, then right. | Next track, then previous; the panel stays closed. A hard fling skips only once. |
 | F17 | Swipe over the ears while an agent glyph is shown, and over a display hidden by full screen. | Nothing happens. |
+| F18 | With no drop-accepting module enabled, drag a file from Finder to the notch. | Nothing opens. |
+| F18 | With Quick Prompt on (F20), drag a file from Finder to the notch in click mode. | The panel opens at once into an "Ask Claude" drop zone. Dragging a window by its title bar past the notch opens nothing. |
+| F18 | Drag out of the panel without dropping. | The panel collapses after the collapse delay. |
+| F18 | Drop on the zone. | The module receives the file (F20: it appears as a chip on the prompt). |
 
 ### F15 verified by the agent (2026-10-26)
 
