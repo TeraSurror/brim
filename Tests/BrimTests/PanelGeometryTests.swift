@@ -55,6 +55,16 @@ final class PanelGeometryTests: XCTestCase {
         XCTAssertEqual(live.minY, plain.frame.minY)
     }
 
+    func testLivePillMatchesTheMenuBarHeight() {
+        var screen = plain
+        screen.menuBarHeight = 30
+        let live = PanelGeometry(screen: screen).liveFrame
+
+        XCTAssertEqual(live.height, 30)
+        XCTAssertEqual(live.width, PanelMetrics().livePillSize.width)
+        XCTAssertEqual(live.minY, plain.frame.minY)
+    }
+
     func testPlainScreenCollapsedIsASlimCenteredHandle() {
         let metrics = PanelMetrics()
         let geometry = PanelGeometry(screen: plain, metrics: metrics)

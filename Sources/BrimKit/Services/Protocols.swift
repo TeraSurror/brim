@@ -99,3 +99,14 @@ public protocol AgentAlertPresenting: AnyObject {
     func present(_ notification: AgentNotification, onOpen: @escaping () -> Void)
     func dismiss()
 }
+
+/// Which screens another app currently fills with a full-screen window. Brim hides its panel on those
+/// screens so a full-screen video or game is never covered. Checked on Space and app changes, not polled.
+@MainActor
+public protocol FullScreenDetecting: AnyObject {
+    /// `ScreenInfo.id`s of the covered screens.
+    var coveredScreenIDs: Set<String> { get }
+    var onChange: ((Set<String>) -> Void)? { get set }
+    func start()
+    func stop()
+}

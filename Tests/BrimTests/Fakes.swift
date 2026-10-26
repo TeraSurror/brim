@@ -54,6 +54,21 @@ final class FakePointer: PointerMonitoring {
     func click(_ x: CGFloat, _ y: CGFloat) { onLeftClick?(CGPoint(x: x, y: y)) }
 }
 
+@MainActor
+final class FakeFullScreen: FullScreenDetecting {
+    var coveredScreenIDs: Set<String> = []
+    var onChange: ((Set<String>) -> Void)?
+    private(set) var running = false
+
+    func start() { running = true }
+    func stop() { running = false }
+
+    func cover(_ ids: Set<String>) {
+        coveredScreenIDs = ids
+        onChange?(ids)
+    }
+}
+
 struct FakeLoginError: Error {}
 
 final class FakeLoginItems: LoginItemControlling {

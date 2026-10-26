@@ -12,6 +12,7 @@ final class NotchWindowManager {
     private let screens: ScreenProviding
     private let scheduler: Scheduling
     private let monitor: PointerMonitoring
+    private let fullScreen: FullScreenDetecting
     private var metrics: PanelMetrics
     private var controllers: [String: NotchWindowController] = [:]
     private var screenObserver: NSObjectProtocol?
@@ -26,12 +27,14 @@ final class NotchWindowManager {
         model: AppModel,
         screens: ScreenProviding = NSScreenProvider(),
         scheduler: Scheduling = DispatchScheduler(),
-        monitor: PointerMonitoring
+        monitor: PointerMonitoring,
+        fullScreen: FullScreenDetecting
     ) {
         self.model = model
         self.screens = screens
         self.scheduler = scheduler
         self.monitor = monitor
+        self.fullScreen = fullScreen
         self.moduleCount = model.activeModules.count
         self.metrics = PanelMetrics(moduleCount: model.activeModules.count)
         self.isLive = model.liveModuleID != nil
@@ -40,6 +43,9 @@ final class NotchWindowManager {
         monitor.onMove = { [weak self] point in self?.pointerMoved(to: point) }
         monitor.onLeftClick = { [weak self] point in self?.clicked(at: point) }
         monitor.start()
+
+        fullScreen.onChange = { [weak self] covered in self?.setFullScreen(covered) }
+        fullScreen.start()
 
         screenObserver = NotificationCenter.default.addObserver(
             forName: NSApplication.didChangeScreenParametersNotification,
@@ -85,6 +91,12 @@ final class NotchWindowManager {
         }
     }
 
+    private func setFullScreen(_ covered: Set<String>) {
+        for controller in controllers.values {
+            controller.setHidden(covered.contains(controller.screenID))
+        }
+    }
+
     private func setModuleCount(_ count: Int) {
         guard count != moduleCount else { return }
         moduleCount = count
@@ -101,6 +113,8 @@ final class NotchWindowManager {
         }
         screenObserver = nil
         monitor.stop()
+        fullScreen.stop()
+        fullScreen.onChange = nil
         for controller in controllers.values {
             controller.close()
         }
@@ -158,6 +172,7 @@ final class NotchWindowManager {
                 metrics: metrics,
                 timings: timings,
                 isLive: isLive,
+                isHidden: fullScreen.coveredScreenIDs.contains(screen.id),
                 scheduler: scheduler,
                 onActiveChange: { [weak model] active in
                     model?.setPanelActive(screenID: screen.id, active: active)
@@ -175,7 +190,7 @@ final class NotchWindowManager {
     private static func signature(for screens: [ScreenInfo]) -> String {
         screens.map {
             "\($0.id)|\($0.frame.origin.x),\($0.frame.origin.y),\($0.frame.width),\($0.frame.height)"
-                + "|\($0.topInset)|\($0.auxiliaryLeftWidth ?? -1)|\($0.auxiliaryRightWidth ?? -1)"
+                + "|\($0.topInset)|\($0.menuBarHeight)|\($0.auxiliaryLeftWidth ?? -1)|\($0.auxiliaryRightWidth ?? -1)"
         }.joined(separator: ";")
     }
 

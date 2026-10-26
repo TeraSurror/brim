@@ -2,15 +2,15 @@
 
 Run on a notched MacBook, with and without an external display, in light and dark mode, and over a full-screen app.
 M1 and the M2 media card were also exercised programmatically (window bounds, accessibility tree, synthetic clicks, an
-offscreen stub adapter); the visual checks below still need a person at the screen. See [`PROGRESS.md`](PROGRESS.md)
-for what was already verified.
+offscreen stub adapter). The user signed off every manual row below on 2026-10-26, which led to F14 (hide over
+full-screen apps) and a menu-bar-height pill. See [`PROGRESS.md`](PROGRESS.md) for what was already verified.
 
 ## M1 manual verification — notch panel shell
 
 | Feature | Check | Expected |
 | --- | --- | --- |
 | F1 | Launch Brim with the lid open and no other app full screen. Look at the notch. | No visible window, glow or shadow at the notch. Nothing steals focus from the front app. |
-| F1 | Open a full-screen app (for example Safari or a video). Move the pointer to the notch. | The panel appears over the full-screen app; no Space switch, no Dock icon. |
+| F1 | Open a full-screen app (for example Safari or a video). Move the pointer to the notch. | Superseded by F14: nothing of Brim shows on that display and hovering does nothing. |
 | F1 | Switch between Spaces (⌃←/⌃→) while the panel is collapsed. | A panel exists on every Space, still aligned to the notch. |
 | F1 | Expand the panel, then click an app visible just below and beside the panel. | The click reaches the app; only the panel's visible rectangle takes clicks. |
 | F2 | Hover the notch and stop moving. | A short black peek appears within ~150 ms (Settings → General → Peek delay). |
@@ -250,7 +250,7 @@ dark mode, and once over a full-screen app.
 | F10 | Move the pointer next to the notch, then start playback so the ears appear under the pointer. | The panel does not open by itself; it opens only when the pointer moves or clicks. |
 | F10 | With media playing, send a `waiting` agent event (socket example above). | The ears switch to an orange glyph (and a count when several sessions wait). Send `working`: media takes the ears back. With nothing playing, a `working` agent shows a quiet pulsing glyph. |
 | F10 | Send an `error` event, open the panel, close it. | The red glyph lights the notch until the panel is opened; afterwards the row is still listed but the notch is bare (or shows media). |
-| F10 | On a display without a notch, play media. | The slim handle becomes a small black pill at the top center with the same artwork and waveform. |
+| F10 | On a display without a notch, play media. | The slim handle becomes a small black pill at the top center, exactly as tall as the menu bar, with the same artwork and waveform. |
 | F10 | Settings → General → turn off "Show activity beside the notch". | The ears disappear immediately. About a second later `pgrep -f brim-media-supervisor` finds nothing while the panel is closed. Turn it back on: the helper restarts and the ears return while media plays. |
 | F10 | Leave media playing and the panel closed for 10 minutes. Check Activity Monitor. | Brim plus its `perl` helper stay under 0.5% CPU and 80 MB combined. |
 | F10 | `pkill -f mediaremote-adapter` while Now Playing is enabled. | The ears disappear; the helper is back within about 5 seconds and the ears return. |
@@ -271,6 +271,11 @@ dark mode, and once over a full-screen app.
 | F13 | Enable one, two and three modules and open the panel each time. | 460, 630 and 934 pt wide; the cards keep the same width and the panel stays centered on the notch. |
 | F13 | Use a 12-hour clock (System Settings → General → Date & Time). | "10:45 PM" stays on one line in the clock card at every module count. |
 | F13 | With Now Playing and Clock enabled, look at the media card. | The full layout: 96 pt artwork, title, artist, album and "Playing in …". The source menu is an icon with a chevron. |
+| F14 | Play a video in a browser and make it full screen on the MacBook. | The ears disappear with the menu bar; hovering the notch does nothing. The external display keeps its pill. |
+| F14 | Leave full screen (Esc), or swipe back to a desktop Space. | The ears return within about a second. |
+| F14 | Repeat on the external display. | Its pill or handle disappears while the video is full screen; the MacBook notch keeps working. |
+| F14 | Open the panel, then put the app under it into full screen (⌃⌘F). | The panel collapses and hides; it comes back collapsed afterwards. |
+| F14 | Zoom a window (double-click its title bar) on each display. | Brim stays visible: a zoomed window is not full screen. |
 
 ### Verified by the agent (2026-10-25)
 
@@ -290,7 +295,20 @@ Against the debug build on macOS 26.6.2 with a YouTube video playing in Brave an
 - Quitting removed the helper and the socket. The user's settings file was restored afterwards.
 
 Not verified here: real clicks on the ears and the alert card, haptics, Reduce Motion, full-screen apps and the Claude
-Code Update… button (it edits `~/.claude/settings.json`, so it was left for the user).
+Code Update… button (it edits `~/.claude/settings.json`, so it was left for the user). The user covered these in the
+2026-10-26 sign-off.
+
+### F14 verified by the agent (2026-10-26)
+
+A scratch app put its own window into native full screen on each display while Brim (debug and release) ran:
+
+- Built-in display: the window list showed the full-screen window at `1920,33 1470×923` (below the notch strip, the
+  same rect as the zoomed windows beside it). Finder's and WindowManager's desktop-level windows for that display were
+  gone while it was in front and back afterwards. Brim logged `Full-screen screens: display-1`, its `259×32` window
+  left the window list, and it returned (empty set logged) after leaving full screen.
+- External display: the full-screen window covered `0,0 1920×1080`; Brim logged `display-3` and hid only that pill.
+- With media live, the external pill measured `150×30` against a 30 pt menu bar (it was `150×24` before).
+
 
 ## Notched vs non-notched geometry
 
@@ -298,8 +316,8 @@ Code Update… button (it edits `~/.claude/settings.json`, so it was left for th
   Hovering anywhere in that rectangle opens the panel; clicks in it open it without activating Brim.
 - Live notch: the notch plus a 40 pt ear on each side (259×32 on the development machine), visible and clickable so a
   click on an ear never reaches the menu bar below.
-- Non-notched screen: the collapsed window is a 148×10 handle at the top center, or a 150×24 pill while something is
-  live. It is intentionally interactive; everything outside it passes through.
+- Non-notched screen: the collapsed window is a 148×10 handle at the top center, or a 150 pt pill as tall as the menu
+  bar (150×30 on the 1080p external display) while something is live. It is intentionally interactive; everything outside it passes through.
 - Expanded panel: 290 pt per module card plus spacing and padding (at least 460 pt), 320 tall, clamped to the screen's
   width and centered on the screen.
 
@@ -319,8 +337,11 @@ Code Update… button (it edits `~/.claude/settings.json`, so it was left for th
 - Settings are written on every change. Dragging a slider writes several times; this is intentional until a debounce is
   needed.
 - The clock updates once a minute while the panel is visible; the collapsed panel has no timeline at all.
-- Full-screen behaviour and window levels can change between macOS releases. If the panel stops appearing over a
-  full-screen app, check `NotchWindow`'s level and collection behaviour first.
+- Window levels can change between macOS releases; keep all window setup in `NotchWindow`.
+- F14 detects full screen as "another app's window fills the display and the display shows no desktop" (Finder's and
+  WindowManager's desktop-level windows are absent in a full-screen Space). On a Mac with neither (Finder's desktop
+  disabled with `CreateDesktop` and no WindowManager shield), a window zoomed to fill the screen also hides Brim. A borderless,
+  non-native full screen that resizes without a Space or app change is picked up at the next app switch.
 - The app is an agent (`LSUIElement`); it has no Dock icon and no menu bar icon. Settings is reachable from the panel
   context menu, the panel gear, or ⌘, while a Brim window is focused.
 

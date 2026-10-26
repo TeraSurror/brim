@@ -11,19 +11,23 @@ public struct ScreenInfo: Identifiable, Equatable, Sendable {
     public var auxiliaryRightWidth: CGFloat?
     /// `NSScreen.safeAreaInsets.top`; non-zero only on displays with a notch (and in some full-screen cases).
     public var topInset: CGFloat
+    /// Height of the menu bar strip (`frame` minus `visibleFrame` at the top), or 0 while it is hidden.
+    public var menuBarHeight: CGFloat
 
     public init(
         id: String = "screen",
         frame: CGRect,
         auxiliaryLeftWidth: CGFloat? = nil,
         auxiliaryRightWidth: CGFloat? = nil,
-        topInset: CGFloat = 0
+        topInset: CGFloat = 0,
+        menuBarHeight: CGFloat = 0
     ) {
         self.id = id
         self.frame = frame
         self.auxiliaryLeftWidth = auxiliaryLeftWidth
         self.auxiliaryRightWidth = auxiliaryRightWidth
         self.topInset = topInset
+        self.menuBarHeight = menuBarHeight
     }
 
     /// The hardware notch, or nil on a display without one.

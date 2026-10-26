@@ -46,7 +46,8 @@ enum Diagnostics {
             } ?? "no notch"
             lines.append(
                 "  \(Int(screen.frame.width))×\(Int(screen.frame.height)) at "
-                    + "(\(Int(screen.frame.minX)), \(Int(screen.frame.minY))), \(notch), topInset \(Int(screen.topInset))"
+                    + "(\(Int(screen.frame.minX)), \(Int(screen.frame.minY))), \(notch), topInset \(Int(screen.topInset)), "
+                    + "menu bar \(Int(screen.menuBarHeight))"
             )
         }
 

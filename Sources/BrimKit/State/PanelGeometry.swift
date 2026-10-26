@@ -7,7 +7,8 @@ public struct PanelMetrics: Equatable, Sendable {
     public var expandedHeight: CGFloat
     /// Width added on each side of the hardware notch while a module shows live content.
     public var liveEarWidth: CGFloat
-    /// The live pill on a display without a notch.
+    /// The live pill on a display without a notch. Its height is only a fallback: the pill matches the menu
+    /// bar's height when the screen reports one, so it reads as a notch rather than a tab under the menu bar.
     public var livePillSize: CGSize
     /// The visible handle on displays without a notch.
     public var handleSize: CGSize
@@ -80,7 +81,7 @@ public struct PanelGeometry: Equatable, Sendable {
         }
         return topAnchored(
             width: min(metrics.livePillSize.width, availableWidth),
-            height: metrics.livePillSize.height
+            height: screen.menuBarHeight > 0 ? screen.menuBarHeight : metrics.livePillSize.height
         )
     }
 

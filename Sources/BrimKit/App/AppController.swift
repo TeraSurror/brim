@@ -82,7 +82,8 @@ public final class AppController {
             model: model,
             screens: screens,
             scheduler: scheduler,
-            monitor: monitor
+            monitor: monitor,
+            fullScreen: WorkspaceFullScreenMonitor(screens: screens, scheduler: scheduler)
         )
         windowManager = manager
         manager.apply(model.settings)

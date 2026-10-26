@@ -25,6 +25,7 @@ final class NotchWindowController {
 
     private var pendingTasks: [TaskHandle] = []
     private var reportedActive = false
+    private var isHidden = false
     /// Incremented for every visual transition so late callbacks from the previous one do nothing.
     private var generation = 0
 
@@ -34,6 +35,7 @@ final class NotchWindowController {
         metrics: PanelMetrics,
         timings: PanelTimings,
         isLive: Bool,
+        isHidden: Bool,
         scheduler: Scheduling,
         onActiveChange: @escaping (Bool) -> Void
     ) {
@@ -87,7 +89,7 @@ final class NotchWindowController {
             guard !self.geometry.contains(point, in: state, live: self.machine.isLive, slop: slop) else { return }
             self.machine.pointerMoved(to: point)
         }
-        window.orderFrontRegardless()
+        setHidden(isHidden)
 
         Log.window.info("Panel for \(screen.id, privacy: .public): notch \(geometry.isNotched, privacy: .public), collapsed \(Int(collapsed.width), privacy: .public)×\(Int(collapsed.height), privacy: .public) at (\(Int(collapsed.minX), privacy: .public), \(Int(collapsed.minY), privacy: .public))")
     }
@@ -102,6 +104,18 @@ final class NotchWindowController {
 
     func update(timings: PanelTimings) {
         machine.update(timings: timings)
+    }
+
+    /// Takes the panel off screen while another app is full screen here, so a video or game is never
+    /// covered. The state machine is disabled, which also collapses an open panel.
+    func setHidden(_ hidden: Bool) {
+        isHidden = hidden
+        machine.isEnabled = !hidden
+        if hidden {
+            window.orderOut(nil)
+        } else {
+            window.orderFrontRegardless()
+        }
     }
 
     /// Grows the collapsed notch into its ears, or retracts them. An open panel just remembers the value and

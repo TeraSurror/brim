@@ -35,7 +35,8 @@ public struct NSScreenProvider: ScreenProviding {
                 frame: cgFrame,
                 auxiliaryLeftWidth: screen.auxiliaryTopLeftArea?.width,
                 auxiliaryRightWidth: screen.auxiliaryTopRightArea?.width,
-                topInset: screen.safeAreaInsets.top
+                topInset: screen.safeAreaInsets.top,
+                menuBarHeight: max(0, frame.maxY - screen.visibleFrame.maxY)
             )
         }
     }

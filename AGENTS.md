@@ -6,14 +6,13 @@ panel. The source of truth for features and acceptance criteria is
 
 ## Current state
 
-M1, M2, M3 F7/F8 and the UX revision F9–F13 are implemented: the notch panel shell (F1–F5), the clock and Now Playing
+M1, M2, M3 F7/F8 and the UX revision F9–F14 are implemented: the notch panel shell (F1–F5), the clock and Now Playing
 modules, agent status over a local Unix socket and `brim://` URL (F7), opt-in agent alerts (F8), and the live notch
 revision — hover/click to open with no peek (F9), live activity in the notch's ears (F10), alerts that switch to the
-agent's app (F11), first-run setup and the Claude Code hook installer (F12), and a panel that widens per module (F13).
-Settings are schema 5. 247 unit tests pass; the UX revision is not committed yet. [`docs/PROGRESS.md`](docs/PROGRESS.md) is the handoff between sessions — read it after the spec. Visual
-sign-off for M1, the real-player/two-player sign-off for M2, the real-Claude-Code-hook/visual sign-off for F7, the
-signed-build banner/visual sign-off for F8 and the F9–F13 manual rows are still pending; the checklist is
-[`docs/TESTING.md`](docs/TESTING.md).
+agent's app (F11), first-run setup and the Claude Code hook installer (F12), a panel that widens per module (F13), and
+hiding on displays where another app is full screen (F14).
+Settings are schema 5. 253 unit tests pass. [`docs/PROGRESS.md`](docs/PROGRESS.md) is the handoff between sessions —
+read it after the spec. The user signed off every manual check on 2026-10-26; F14 came out of that sign-off. The checklist is [`docs/TESTING.md`](docs/TESTING.md).
 The next M3 features (quick prompt, send-to-assistant) are not designed; brainstorm with the user before writing
 acceptance criteria.
 
@@ -49,7 +48,8 @@ brim/
 │       ├── Modules/                   # BrimModule protocol, module registry, implementations (Clock, Media, Agent…)
 │       ├── Services/                  # Protocols.swift + real implementations (screens, now playing, login item,
 │       │                              #   settings, MediaRemote helper, Spotify/Music Apple Events, agent socket/URL,
-│       │                              #   local notifications, opening a session's app/folder, Claude Code hook installer)
+│       │                              #   local notifications, opening a session's app/folder, Claude Code hook installer,
+│       │                              #   full-screen detection)
 │       ├── Model/                     # value types: ScreenInfo, PanelState, LiveActivity, NowPlaying, AgentEvent/Notification, Settings
 │       ├── Support/                   # Log.swift (os.Logger categories), Diagnostics.swift
 │       └── UI/                        # SwiftUI panel views, media/agent cards, notch alert and settings. Never touches NSPanel

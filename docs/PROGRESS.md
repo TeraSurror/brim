@@ -3,12 +3,11 @@
 This file is the handoff between sessions. Read it with `AGENTS.md` and the spec before touching code, and update it
 before ending a session.
 
-**Last updated:** 2026-10-25
-**Current milestone:** UX revision (F9–F13, spec section "UX revision: live notch") — code complete, uncommitted;
-manual sign-off pending
-**Next action:** review and commit the UX revision (one commit per feature if wanted), then run the F9–F13 rows in
-[`TESTING.md`](TESTING.md), including Settings → Agents → Update… for the Claude Code hook. After that, design the
-"not designed yet" items (full screen, keyboard, drag and drop) or the next M3 feature before writing criteria.
+**Last updated:** 2026-10-26
+**Current milestone:** M1–M3 F8 and the UX revision F9–F14 are complete and signed off by the user (2026-10-26). F14
+(hide over full-screen apps, menu-bar-height pill) came out of that sign-off.
+**Next action:** design the remaining "not designed yet" items (display choice, keyboard, drag and
+drop, gestures) or the next M3 feature (quick prompt, send to assistant) with the user before writing criteria.
 
 ## How to resume
 
@@ -23,14 +22,32 @@ manual sign-off pending
 
 | Milestone | State |
 | --- | --- |
-| M1 — Notch panel shell | Code complete (F1–F5), 47 unit tests pass, manual visual sign-off pending |
-| M2 — Media controls | Code complete (F6), 100 unit tests pass, real-player and visual sign-off pending |
-| M3 — AI tools and IDE integration | F7 (agent status) and F8 (alerts/open project) code complete; 184 unit tests pass; manual sign-off pending. Quick prompt and send-to-assistant are not designed |
-| UX revision — live notch | F9–F13 code complete; 247 unit tests pass; partly verified against the running app; manual sign-off pending |
+| M1 — Notch panel shell | Complete (F1–F5); signed off 2026-10-26 |
+| M2 — Media controls | Complete (F6); signed off 2026-10-26 |
+| M3 — AI tools and IDE integration | F7 (agent status) and F8 (alerts/open project) complete; signed off 2026-10-26. Quick prompt and send-to-assistant are not designed |
+| UX revision — live notch | F9–F13 complete and signed off 2026-10-26. F14 complete and verified against the running app; 253 unit tests pass |
 | Stretch goals | Not started |
 
 Test machine: macOS 26.6.2, Apple Silicon. Displays seen during development: primary 1920×1080 (no notch) and built-in
 1470×956 with a 179×32 notch. Minimum target remains macOS 14.
+
+## F14 — what exists
+
+Asked for during the 2026-10-26 sign-off: a full-screen video still showed the ears, and the external display's pill
+was 24 pt tall under a 30 pt menu bar.
+
+- `FullScreenDetecting` (Protocols) with `WorkspaceFullScreenMonitor` (`Services/FullScreenMonitor.swift`). It reads
+  `CGWindowListCopyWindowInfo` on Space changes, app activation/termination and screen changes, then again 0.4 s and
+  1.2 s later while the animation settles. Pure rule in `coveredScreenIDs(windows:screens:excludingPID:)`: another
+  app's layer-0 window fills the display below the menu bar strip, and no desktop-icon-level window (Finder,
+  WindowManager) covers it. Size alone fails on a notched display, where a full-screen window sits at the same rect as
+  a zoomed one; `NSApp.currentSystemPresentationOptions` was tried and stays 0 for other apps.
+- `NotchWindowManager` hides covered screens' controllers; `NotchWindowController.setHidden` disables the state machine
+  (collapsing an open panel) and orders the window out. Agent alerts are untouched.
+- `ScreenInfo.menuBarHeight` (frame top minus visible-frame top) sizes the non-notched live pill; `livePillSize.height`
+  is the fallback while the menu bar is hidden. Diagnostics print it.
+- Tests: `FullScreenMonitorTests` (window lists recorded on the development machine), a pill-height case in
+  `PanelGeometryTests`, and `FakeFullScreen` in `Fakes.swift`. 253 tests.
 
 ## UX revision (F9–F13) — what exists
 
@@ -289,7 +306,7 @@ could not be automated are listed under **Manual sign-off still needed**.
 - [x] Idle CPU under 0.5% and memory under 80 MB. (Measured 0.0% CPU; ~22 MB RSS in debug, ~50 MB in release after warm-up.)
 - [x] No permission prompt at launch; no network use. (No permission APIs are called and no networking code exists.)
 - [x] Logs appear under subsystem `com.harshshelar.brim`.
-- [ ] Light/dark mode, external display, full-screen app visually checked. (External display behavior verified programmatically; visual appearance still pending.)
+- [x] Light/dark mode, external display, full-screen app visually checked. (External display behavior verified programmatically; visual appearance still pending.)
 
 ## M2 acceptance checklist
 
@@ -337,7 +354,7 @@ could not be automated are listed under **Manual sign-off still needed**.
 - [x] **Settings schema 3**: retention round-trips, schema 2 files migrate without losing values, and the retention
   value is clamped. Unit tested.
 - [x] **No permissions / no network**: the module declares no permissions, never prompts, and has no networking code.
-- [ ] **Manual visual sign-off**: light/dark mode, a long session list, and the card beside clock + media on the notched
+- [x] **Manual visual sign-off**: light/dark mode, a long session list, and the card beside clock + media on the notched
   display. See [`TESTING.md`](TESTING.md).
 
 ## UX revision acceptance checklist
@@ -347,20 +364,20 @@ note in [`TESTING.md`](TESTING.md)). `[ ]` = needs a person at the screen.
 
 - [x] **F9** Hover opens the full panel after the hover delay; no peek. Verified with a pointer warp (934×320).
 - [x] **F9** Open mode (hover/click) in settings, schema 5 migration. Unit tested.
-- [ ] **F9** Haptic tap and Reduce Motion cross-fade. Code paths exist; not observable here.
+- [x] **F9** Haptic tap and Reduce Motion cross-fade. Code paths exist; not observable here.
 - [x] **F10** Live ears while media plays (259×32 on the 179×32 notch; 150×24 pill on the external display), from the
   real Brave/YouTube stream with the panel closed.
 - [x] **F10** Agent waiting takes the ears from media; working hands them back. Verified with socket events.
 - [x] **F10** Grace period, acknowledgement, priority, helper lifecycle and restart backoff. Unit tested.
-- [ ] **F10** Clicks on the ears never reach the menu bar; idle CPU/memory with the helper running for 10 minutes.
+- [x] **F10** Clicks on the ears never reach the menu bar; idle CPU/memory with the helper running for 10 minutes.
 - [x] **F11** `app` validation/transport, open-app-then-Finder fallback, dismiss-on-open. Unit tested.
 - [x] **F11** The alert drops from the top of the pointer's screen. Verified (360×64 at y 0 on the external display).
-- [ ] **F11** Click-anywhere and hover-pause on the real card; a real Claude Code session switching to its terminal.
+- [x] **F11** Click-anywhere and hover-pause on the real card; a real Claude Code session switching to its terminal.
 - [x] **F12** Defaults, no-permission media, panel player choice, first launch, hook install/update/remove. Unit tested.
 - [x] **F12** Reopen shows Settings with the five tabs. Verified.
-- [ ] **F12** Update… on the real `~/.claude/settings.json` (left for the user: it edits their Claude Code config).
+- [x] **F12** Update… on the real `~/.claude/settings.json` (left for the user: it edits their Claude Code config).
 - [x] **F13** Width per module count, clock line limit, media full layout threshold. Unit tested; 934 pt seen live.
-- [ ] Light/dark mode, full-screen app, keyboard-only settings, VoiceOver on the ears and the alert.
+- [x] Light/dark mode, full-screen app, keyboard-only settings, VoiceOver on the ears and the alert.
 
 ## M3 F8 acceptance checklist
 
@@ -379,12 +396,13 @@ note in [`TESTING.md`](TESTING.md)). `[ ]` = needs a person at the screen.
 - [x] **Settings schema 4**: the notification flag round-trips; schema 3 files migrate without losing values; a denied
   system permission keeps the notch fallback enabled and explains why.
 - [x] **Diagnostics** include notification enabled/authorization state.
-- [ ] **Manual sign-off**: a signed build's macOS banner, its click behavior, and the notch alert in light/dark mode.
+- [x] **Manual sign-off**: a signed build's macOS banner, its click behavior, and the notch alert in light/dark mode.
 
-## Manual sign-off still needed
+## Manual sign-off
 
-These need a human at the screen; this environment could not take screenshots (no Screen Recording permission for the
-agent process). Run through [`TESTING.md`](TESTING.md).
+Done by the user on 2026-10-26: every item below and every manual row in [`TESTING.md`](TESTING.md). The sign-off
+found two issues, both fixed in F14: the ears stayed over a full-screen video, and the external display's pill was
+shorter than its menu bar. The list is kept as a record of what was checked.
 
 - Does the collapsed notched window really disappear behind the hardware notch?
 - Does the panel look right in light and dark mode, and does the peek read as the notch growing?
@@ -662,3 +680,18 @@ agent process). Run through [`TESTING.md`](TESTING.md).
   running, as it was found.
 - Not committed: the user asked for implementation, not a commit. Not done: the user's own Claude Code hook was left
   at the old version (Settings → Agents → Update… upgrades it).
+
+### 2026-10-26 — manual sign-off and F14
+
+- The user signed off every manual check (M1, M2, F7, F8, F9–F13) and reported two issues: the notch stayed visible
+  over a full-screen video, and the live pill looked off. The pill screenshot was the 150×24 pill on the 1080p
+  external display, whose menu bar is 30 pt.
+- Probed full screen with a scratch app on each display. Findings: on the notched display the full-screen window is
+  `1920,33 1470×923`, identical to zoomed windows, and the menu bar window stays listed; the app's title-bar strip
+  window is alpha 0; `currentSystemPresentationOptions` stays 0 for other apps. The reliable signal is the missing
+  desktop: Finder's and WindowManager's desktop-icon-level windows for that display leave the list.
+- Implemented F14 as described in "F14 — what exists" and added it to the spec; ticked every acceptance box in the
+  spec and amended F1 ("over full-screen apps") and F10 (pill height).
+- Verified with debug and release builds: Brim hid only the full-screen display and came back afterwards on both
+  displays; the pill is now `150×30`. 253 tests pass. Brim was left running from `build/Brim.app` (release).
+
