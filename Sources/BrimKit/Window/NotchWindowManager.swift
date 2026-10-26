@@ -24,6 +24,7 @@ final class NotchWindowManager {
     private var isLive: Bool
     private var screenSignature = ""
     private var cancellables = Set<AnyCancellable>()
+    private var gestures = GestureInterpreter()
 
     init(
         model: AppModel,
@@ -44,6 +45,7 @@ final class NotchWindowManager {
 
         monitor.onMove = { [weak self] point in self?.pointerMoved(to: point) }
         monitor.onLeftClick = { [weak self] point in self?.clicked(at: point) }
+        monitor.onScroll = { [weak self] sample in self?.scrolled(sample) }
         monitor.start()
 
         fullScreen.onChange = { [weak self] covered in self?.setFullScreen(covered) }
@@ -149,6 +151,21 @@ final class NotchWindowManager {
     private func clicked(at point: CGPoint) {
         for controller in controllers.values {
             controller.clicked(at: point)
+        }
+    }
+
+    /// One gesture per swipe. Vertical ones open or close a panel; horizontal ones over the ears go to the
+    /// live module, so the shell never needs to know what a swipe means to media.
+    private func scrolled(_ sample: ScrollSample) {
+        guard let (gesture, point) = gestures.feed(sample) else { return }
+        switch gesture {
+        case .up, .down:
+            for controller in controllers.values {
+                controller.scrolled(gesture, at: point)
+            }
+        case .left, .right:
+            guard controllers.values.contains(where: { $0.acceptsSwipe(at: point) }) else { return }
+            model.liveModule?.handleSwipe(gesture)
         }
     }
 

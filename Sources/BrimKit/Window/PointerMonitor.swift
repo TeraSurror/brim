@@ -7,6 +7,7 @@ import AppKit
 public final class NSEventPointerMonitor: PointerMonitoring {
     public var onMove: ((CGPoint) -> Void)?
     public var onLeftClick: ((CGPoint) -> Void)?
+    public var onScroll: ((ScrollSample) -> Void)?
 
     private var globalMonitor: Any?
     private var localMonitor: Any?
@@ -15,7 +16,7 @@ public final class NSEventPointerMonitor: PointerMonitoring {
 
     public func start() {
         guard globalMonitor == nil, localMonitor == nil else { return }
-        let mask: NSEvent.EventTypeMask = [.mouseMoved, .leftMouseDown]
+        let mask: NSEvent.EventTypeMask = [.mouseMoved, .leftMouseDown, .scrollWheel]
 
         globalMonitor = NSEvent.addGlobalMonitorForEvents(matching: mask) { [weak self] event in
             MainActor.assumeIsolated { self?.handle(event) }
@@ -35,11 +36,37 @@ public final class NSEventPointerMonitor: PointerMonitoring {
 
     private func handle(_ event: NSEvent) {
         let point = Self.cgPoint(from: NSEvent.mouseLocation)
-        if event.type == .leftMouseDown {
+        switch event.type {
+        case .leftMouseDown:
             onLeftClick?(point)
-        } else {
+        case .scrollWheel:
+            onScroll?(Self.sample(from: event, at: point))
+        default:
             onMove?(point)
         }
+    }
+
+    /// Undoes "natural scrolling" so the deltas follow the fingers: fingers down is always positive Y.
+    private static func sample(from event: NSEvent, at point: CGPoint) -> ScrollSample {
+        let sign: CGFloat = event.isDirectionInvertedFromDevice ? 1 : -1
+        let phase: ScrollSample.Phase
+        if event.phase.contains(.began) || event.phase.contains(.mayBegin) {
+            phase = .began
+        } else if event.phase.contains(.ended) || event.phase.contains(.cancelled) {
+            phase = .ended
+        } else if event.phase.isEmpty {
+            phase = .none
+        } else {
+            phase = .changed
+        }
+        return ScrollSample(
+            location: point,
+            deltaX: event.scrollingDeltaX * sign,
+            deltaY: event.scrollingDeltaY * sign,
+            phase: phase,
+            isMomentum: !event.momentumPhase.isEmpty,
+            timestamp: event.timestamp
+        )
     }
 
     /// CoreGraphics global space: origin top-left of the primary display, matching `ScreenInfo.frame`.

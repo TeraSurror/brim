@@ -294,13 +294,13 @@ from the keyboard, a panel that can take focus, and a drop target on the notch. 
 
 **F17. Gestures**
 
-- [ ] A two-finger scroll down (or a mouse-wheel step down) over the notch, live notch, pill or handle opens the panel
+- [x] A two-finger scroll down (or a mouse-wheel step down) over the notch, live notch, pill or handle opens the panel
   at once, in both hover and click modes. A scroll up over the panel's top strip (the notch-height band) closes it;
   scrolling inside a card still scrolls the card.
-- [ ] A horizontal two-finger swipe over the ears while media is live skips tracks: swipe left for next, right for
+- [x] A horizontal two-finger swipe over the ears while media is live skips tracks: swipe left for next, right for
   previous, without opening the panel. One swipe is one skip; trailing momentum never skips twice.
-- [ ] Swipes over agent ears, and gestures on a display hidden by F14, do nothing.
-- [ ] No permission is needed. Scroll events come from the existing pointer monitor and the panel window; nothing
+- [x] Swipes over agent ears, and gestures on a display hidden by F14, do nothing.
+- [x] No permission is needed. Scroll events come from the existing pointer monitor and the panel window; nothing
   polls.
 
 **F18. Drop onto the notch**

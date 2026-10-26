@@ -30,6 +30,7 @@ public protocol ScreenProviding {
 public protocol PointerMonitoring: AnyObject {
     @MainActor var onMove: ((CGPoint) -> Void)? { get set }
     @MainActor var onLeftClick: ((CGPoint) -> Void)? { get set }
+    @MainActor var onScroll: ((ScrollSample) -> Void)? { get set }
     @MainActor func start()
     @MainActor func stop()
 }

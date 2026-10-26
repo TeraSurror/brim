@@ -112,6 +112,14 @@ final class NotchWindowController {
         machine.clicked(at: point)
     }
 
+    func scrolled(_ gesture: ScrollGesture, at point: CGPoint) {
+        machine.scrolled(gesture, at: point)
+    }
+
+    func acceptsSwipe(at point: CGPoint) -> Bool {
+        machine.acceptsSwipe(at: point)
+    }
+
     func update(timings: PanelTimings) {
         machine.update(timings: timings)
     }

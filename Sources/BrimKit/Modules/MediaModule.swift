@@ -121,6 +121,16 @@ public final class MediaModule: BrimModule, MediaModuleControlling, ObservableOb
         service.send(command)
     }
 
+    /// Swiping the ears skips tracks: left for next, right for previous, like flicking a card away.
+    public func handleSwipe(_ gesture: ScrollGesture) {
+        guard nowPlaying != nil else { return }
+        switch gesture {
+        case .left: send(.next)
+        case .right: send(.previous)
+        case .up, .down: break
+        }
+    }
+
     public func seek(to position: TimeInterval) {
         service.seek(to: position)
     }

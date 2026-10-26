@@ -326,12 +326,23 @@ A scratch app put its own window into native full screen on each display while B
 | F16 | Open with the shortcut while a video is full screen on that display. | The panel shows over the video; closing it hides Brim there again. |
 | F16 | With focus and Keyboard navigation on, press Tab and Space. | Focus moves through the panel's buttons; Space presses them. VoiceOver reads them. |
 | F16 | Record a combination another app already registered. | Settings says macOS refused it; nothing is registered. Clear removes the shortcut. |
+| F17 | With Open the panel → On click, scroll down with two fingers on the notch (or roll a mouse wheel toward you). | The panel opens at once; hovering alone still does nothing. Works with natural scrolling on and off. |
+| F17 | Scroll up with the pointer on the panel's top band (beside the notch). | The panel closes. Scrolling inside the agent list scrolls the list and keeps the panel open. |
+| F17 | While media plays and the panel is closed, swipe left over the ears, then right. | Next track, then previous; the panel stays closed. A hard fling skips only once. |
+| F17 | Swipe over the ears while an agent glyph is shown, and over a display hidden by full screen. | Nothing happens. |
 
 ### F15 verified by the agent (2026-10-26)
 
 With the user's settings file backed up, set to each mode and Brim relaunched: `notchedOnly` built only the `179×32`
 notch window, `mainOnly` only the external display's `148×10` handle, and `all` both. The original schema 5 file
 (`showOnNonNotchedDisplays: true`) migrated to All displays and was restored unchanged afterwards.
+
+### F17 verified by the agent (2026-10-26)
+
+In click mode, with the pointer warped onto the notch and synthetic scroll events: hovering alone did nothing; a wheel
+step toward the user opened the `630×320` panel; a wheel step away over a card kept it open; the same over the top
+band closed it. Phased trackpad-style events (began/changed/ended) opened and closed it the same way. Natural
+scrolling was on. Horizontal swipes were not sent, because they would have skipped the user's playing track.
 
 ### F16 verified by the agent (2026-10-26)
 

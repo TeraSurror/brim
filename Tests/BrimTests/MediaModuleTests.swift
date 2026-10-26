@@ -115,6 +115,24 @@ final class MediaModuleTests: XCTestCase {
         XCTAssertEqual(service.seeks, [42])
     }
 
+    func testSwipingTheEarsSkipsTracks() {
+        module.setEnabled(true)
+        module.setLiveActivityEnabled(true)
+        service.emit(track())
+
+        module.handleSwipe(.left)
+        module.handleSwipe(.right)
+        module.handleSwipe(.down)
+
+        XCTAssertEqual(service.commands, [.next, .previous])
+    }
+
+    func testSwipingWithNothingPlayingSendsNothing() {
+        module.setEnabled(true)
+        module.handleSwipe(.left)
+        XCTAssertTrue(service.commands.isEmpty)
+    }
+
     func testEnablingTheModuleNeedsNoPermission() {
         // Automation is optional and only asked for when the user follows Spotify or Music.
         XCTAssertTrue(module.requiredPermissions.isEmpty)

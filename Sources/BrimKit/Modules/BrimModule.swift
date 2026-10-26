@@ -28,6 +28,8 @@ public protocol BrimModule: AnyObject, Identifiable {
     var liveActivityPublisher: AnyPublisher<LiveActivity?, Never> { get }
     /// One ear of the live notch. Only called while this module's activity is the one shown.
     func liveView(_ edge: LiveActivityEdge) -> AnyView
+    /// A horizontal swipe over the ears while this module's activity is shown. Most modules ignore it.
+    func handleSwipe(_ gesture: ScrollGesture)
 
     func expandedView() -> AnyView
 }
@@ -38,4 +40,5 @@ public extension BrimModule {
     var liveActivity: LiveActivity? { nil }
     var liveActivityPublisher: AnyPublisher<LiveActivity?, Never> { Just(nil).eraseToAnyPublisher() }
     func liveView(_ edge: LiveActivityEdge) -> AnyView { AnyView(EmptyView()) }
+    func handleSwipe(_ gesture: ScrollGesture) {}
 }

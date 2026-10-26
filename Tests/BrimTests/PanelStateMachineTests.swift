@@ -27,6 +27,57 @@ final class PanelStateMachineTests: XCTestCase {
     private let earPoint = CGPoint(x: 630, y: 16)
     private let away = CGPoint(x: 756, y: 500)
 
+    func testScrollingDownOverTheNotchOpensAtOnceEvenInClickMode() {
+        machine.update(timings: PanelTimings(hoverDelay: 0.15, collapseDelay: 0.4, opensOnHover: false))
+        machine.scrolled(.down, at: away)
+        XCTAssertEqual(machine.state, .collapsed)
+
+        machine.scrolled(.up, at: notchPoint)
+        XCTAssertEqual(machine.state, .collapsed)
+
+        machine.scrolled(.down, at: notchPoint)
+        XCTAssertEqual(machine.state, .expanded)
+    }
+
+    func testScrollingDownOverTheEarsOpensOnlyWhileLive() {
+        machine.scrolled(.down, at: earPoint)
+        XCTAssertEqual(machine.state, .collapsed)
+
+        machine.isLive = true
+        machine.scrolled(.down, at: earPoint)
+        XCTAssertEqual(machine.state, .expanded)
+    }
+
+    func testScrollingUpOverTheTopStripClosesButNotOverTheCards() {
+        machine.clicked(at: notchPoint)
+        machine.scrolled(.up, at: CGPoint(x: 756, y: 150))
+        XCTAssertEqual(machine.state, .expanded)
+
+        machine.scrolled(.up, at: CGPoint(x: 600, y: 20))
+        XCTAssertEqual(machine.state, .collapsed)
+    }
+
+    func testScrollingUpClosesAKeyboardOpenedPanelToo() {
+        machine.expandFromKeyboard()
+        machine.scrolled(.up, at: notchPoint)
+        XCTAssertEqual(machine.state, .collapsed)
+        XCTAssertFalse(machine.isHeldOpen)
+    }
+
+    func testSwipesReachTheLiveModuleOnlyOverTheLiveNotchWhileClosed() {
+        XCTAssertFalse(machine.acceptsSwipe(at: earPoint))
+        machine.isLive = true
+        XCTAssertTrue(machine.acceptsSwipe(at: earPoint))
+        XCTAssertFalse(machine.acceptsSwipe(at: away))
+
+        machine.clicked(at: notchPoint)
+        XCTAssertFalse(machine.acceptsSwipe(at: earPoint))
+
+        machine.collapseNow()
+        machine.isEnabled = false
+        XCTAssertFalse(machine.acceptsSwipe(at: earPoint))
+    }
+
     func testKeyboardOpenStaysOpenWhenThePointerLeaves() {
         machine.expandFromKeyboard()
         XCTAssertEqual(machine.state, .expanded)

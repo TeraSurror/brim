@@ -65,6 +65,17 @@ final class PanelGeometryTests: XCTestCase {
         XCTAssertEqual(live.minY, plain.frame.minY)
     }
 
+    func testTheTopStripIsTheNotchHeightBandOfTheOpenPanel() {
+        let geometry = PanelGeometry(screen: notched)
+        let expanded = geometry.frame(for: .expanded)
+        XCTAssertEqual(geometry.expandedTopStrip, CGRect(x: expanded.minX, y: 0, width: expanded.width, height: 32))
+
+        var withMenuBar = plain
+        withMenuBar.menuBarHeight = 30
+        XCTAssertEqual(PanelGeometry(screen: withMenuBar).expandedTopStrip.height, 30)
+        XCTAssertEqual(PanelGeometry(screen: plain).expandedTopStrip.height, 24)
+    }
+
     func testPlainScreenCollapsedIsASlimCenteredHandle() {
         let metrics = PanelMetrics()
         let geometry = PanelGeometry(screen: plain, metrics: metrics)

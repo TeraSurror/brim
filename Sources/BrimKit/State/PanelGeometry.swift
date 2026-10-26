@@ -85,6 +85,14 @@ public struct PanelGeometry: Equatable, Sendable {
         )
     }
 
+    /// The notch-height band across the top of the open panel. Scrolling up here closes it; below it the
+    /// cards keep their own scrolling.
+    public var expandedTopStrip: CGRect {
+        let expanded = frame(for: .expanded)
+        let height = min(expanded.height, max(screen.topInset, screen.menuBarHeight, 24))
+        return CGRect(x: expanded.minX, y: expanded.minY, width: expanded.width, height: height)
+    }
+
     public var expandedPanelWidth: CGFloat {
         min(metrics.expandedWidth, availableWidth)
     }

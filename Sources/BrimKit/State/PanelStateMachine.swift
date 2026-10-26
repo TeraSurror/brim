@@ -76,6 +76,27 @@ public final class PanelStateMachine {
         }
     }
 
+    /// Scrolling down over the notch opens the panel at once, in hover and click mode alike. Scrolling up
+    /// over the open panel's top strip closes it.
+    public func scrolled(_ gesture: ScrollGesture, at point: CGPoint) {
+        guard isEnabled else { return }
+        lastPoint = point
+        switch (state, gesture) {
+        case (.collapsed, .down) where isOverCollapsed(point):
+            expandNow()
+        case (.expanded, .up) where geometry.expandedTopStrip.insetBy(dx: 0, dy: -1).contains(point):
+            collapseNow()
+        default:
+            break
+        }
+    }
+
+    /// True when a horizontal swipe here should reach the live module: the ears are showing and the panel
+    /// is closed.
+    public func acceptsSwipe(at point: CGPoint) -> Bool {
+        isEnabled && state == .collapsed && isLive && isOverCollapsed(point)
+    }
+
     /// Opens at once and stays open until it is closed on purpose. Opening a panel that hover already
     /// opened just holds it.
     public func expandFromKeyboard() {
