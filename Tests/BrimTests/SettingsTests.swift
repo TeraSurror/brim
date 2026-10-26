@@ -27,6 +27,7 @@ final class SettingsTests: XCTestCase {
         settings.showOnNonNotchedDisplays = false
         settings.preferredPlayerBundleID = "com.spotify.client"
         settings.agentFinishedRetentionMinutes = 30
+        settings.agentNotificationsEnabled = true
 
         store.save(settings)
         XCTAssertEqual(store.load(), settings)
@@ -68,6 +69,20 @@ final class SettingsTests: XCTestCase {
         XCTAssertEqual(settings.hoverDelay, 0.3)
         XCTAssertEqual(settings.preferredPlayerBundleID, "com.spotify.client")
         XCTAssertEqual(settings.agentFinishedRetentionMinutes, 10)
+        XCTAssertFalse(settings.agentNotificationsEnabled)
+    }
+
+    func testSchemaThreeFileMigratesToTheCurrentSchema() throws {
+        let data = Data(
+            #"{"schemaVersion":3,"agentFinishedRetentionMinutes":30,"enabledModules":["clock","agents"]}"#
+                .utf8
+        )
+        let settings = try SettingsMigrator.migrate(data)
+
+        XCTAssertEqual(settings.schemaVersion, Settings.currentSchemaVersion)
+        XCTAssertEqual(settings.agentFinishedRetentionMinutes, 30)
+        XCTAssertEqual(settings.enabledModules, ["clock", "agents"])
+        XCTAssertFalse(settings.agentNotificationsEnabled)
     }
 
     func testAgentRetentionIsClampedToItsRange() throws {

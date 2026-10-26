@@ -12,15 +12,18 @@ built to host pluggable modules; media controls are the first real one.
   for anything macOS reports (Spotify, Music, Safari/YouTube, …), with optional direct Spotify/Music control
 - **Agent status**: local Claude Code/Codex/Cursor/VS Code events over a Unix socket or `brim://` URL, with waiting,
   working, done and failed rows in the panel
+- **Agent alerts**: opt-in notch alert or macOS banner when an agent is waiting or fails, with a click that opens the
+  project in Finder
 - **Works with no media**: the module disappears from the peek and shows a quiet empty state in the panel
 - **Settings** for hover/collapse timing, launch at login, modules and multi-display behaviour
 - **No network access, no analytics, no menu bar icon** (M1/M2; Agent Status is local-only)
 
 ## Status
 
-M1 (notch panel shell), M2 (media controls) and M3 F7 (agent status) are implemented and unit tested. Real-player,
-real-Claude-Code-hook and visual sign-off still need a person at the screen. See [`docs/PROGRESS.md`](docs/PROGRESS.md)
-for what is verified and the next session's starting point; the checklists are in [`docs/TESTING.md`](docs/TESTING.md).
+M1 (notch panel shell), M2 (media controls), M3 F7 (agent status) and M3 F8 (agent alerts/open project) are implemented
+and unit tested. Real-player, real-Claude-Code-hook and visual sign-off still need a person at the screen. See
+[`docs/PROGRESS.md`](docs/PROGRESS.md) for what is verified and the next session's starting point; the checklists are in
+[`docs/TESTING.md`](docs/TESTING.md).
 
 ## Documentation
 
@@ -76,15 +79,24 @@ Claude Code is the reference integration: [`docs/TESTING.md`](docs/TESTING.md) h
 `~/.brim/claude-hook.sh` and the `~/.claude/settings.json` hooks. Codex, Cursor, VS Code extensions and plain scripts
 use the same contract.
 
+Agent alerts are a separate opt-in in **Settings → General → Agents**. Brim shows a small card under the notch while
+the panel is closed, and uses a macOS notification banner when the system allows it. Clicking the alert's folder button
+opens the session's `cwd` in Finder; agent rows have the same button.
+
+> System banners require a signed build. On the ad-hoc development build macOS returns “Notifications are not allowed
+> for this application”, so Brim uses the notch alert instead. The behavior is otherwise identical.
+
 ## Code layout
 
-- `Sources/BrimKit/Window/`: all AppKit panel code (`NSPanel`, frames, pointer tracking, per-screen manager)
-- `Sources/BrimKit/State/`: pure hover/expand geometry, the state machine and the agent roster, driven by an injected
-  scheduler/clock
+- `Sources/BrimKit/Window/`: all AppKit panel code (`NSPanel`, frames, pointer tracking, per-screen manager, notch alerts)
+- `Sources/BrimKit/State/`: pure hover/expand geometry, the state machine, agent roster and alert geometry, driven by an
+  injected scheduler/clock
 - `Sources/BrimKit/Modules/`: `BrimModule`, registry, the clock, Now Playing and Agent Status modules
 - `Sources/BrimKit/Services/`: protocols plus real implementations (screens, login item, settings, permissions,
-  MediaRemote helper process, Spotify/Music Apple Events, now-playing coordinator, agent Unix socket and URL router)
-- `Sources/BrimKit/Model/`: `ScreenInfo`, `PanelState`, `NowPlaying`, `AgentEvent`, `Settings`, permissions
+  MediaRemote helper process, Spotify/Music Apple Events, now-playing coordinator, agent Unix socket/URL router,
+  local notifications and Finder project opening)
+- `Sources/BrimKit/Model/`: `ScreenInfo`, `PanelState`, `NowPlaying`, `AgentEvent`, `AgentNotification`, `Settings`,
+  permissions
 - `scripts/build-media-adapter.sh`: builds the pinned third-party helper into `.build/media-adapter`
 - `Sources/BrimKit/UI/`: SwiftUI panel, media/agent cards and settings views; no `NSPanel` or `NSScreen` access
 - `Sources/BrimKit/App/`: composition root, app delegate, settings window, shared model
@@ -130,6 +142,23 @@ Architecture rules and conventions are in [`AGENTS.md`](AGENTS.md). In short: on
   long” and the module has no listener. Move the home directory or shorten the path if this happens.
 - If an agent crashed, its working/waiting row stays until you dismiss it or press Clear; working sessions do not
   expire automatically.
+
+### Agent alerts do not appear
+
+- Turn on **Settings → General → Agents → Notify when an agent needs input** and leave Agent Status enabled.
+- Alerts only fire when a session *newly* enters waiting or failed, and only while no panel is open. A repeated waiting
+  event does not alert again.
+- The notch alert appears for about 7 seconds under the notch. Look there, not in Notification Center, especially on
+  an ad-hoc development build.
+- Check the module state:
+  ```sh
+  log stream --level debug --predicate 'subsystem == "com.harshshelar.brim" AND category == "agent"'
+  ```
+  A skipped system notification logs the authorization state; the notch fallback still runs.
+- **System banners need a signed build.** With the ad-hoc `build/Brim.app`, macOS reports “Notifications are not allowed
+  for this application” and never shows a permission prompt. Brim deliberately falls back to its own notch alert.
+- If macOS banners are off, Settings offers **Open Settings…** to the Notifications pane; the notch alert remains
+  available either way.
 
 ### Automation was denied or keeps asking
 

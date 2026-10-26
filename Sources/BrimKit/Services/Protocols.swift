@@ -60,3 +60,28 @@ public protocol AgentEventListening: AnyObject {
     func start()
     func stop()
 }
+
+/// Local notifications for agent transitions. Permission is requested only from the settings toggle,
+/// never at launch; `post` is a no-op until authorization is granted.
+@MainActor
+public protocol AgentNotifying: AnyObject {
+    var authorization: NotificationAuthorization { get }
+    var onOpenProject: ((String) -> Void)? { get set }
+    func refreshAuthorization() async
+    func requestAuthorization() async -> NotificationAuthorization
+    func post(_ notification: AgentNotification)
+}
+
+/// Opening a project without letting the agent module touch AppKit directly.
+@MainActor
+public protocol WorkspaceOpening: AnyObject {
+    func openDirectory(_ path: String) -> Bool
+}
+
+/// Brim's own alert shown under the notch when macOS notifications are unavailable or denied. This keeps
+/// the opt-in feature working for ad-hoc development builds.
+@MainActor
+public protocol AgentAlertPresenting: AnyObject {
+    func present(_ notification: AgentNotification, onOpen: @escaping () -> Void)
+    func dismiss()
+}

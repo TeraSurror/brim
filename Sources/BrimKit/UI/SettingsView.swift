@@ -18,6 +18,7 @@ struct SettingsView: View {
 
 private struct GeneralSettingsTab: View {
     @EnvironmentObject var model: AppModel
+    @State private var showNotificationExplanation = false
 
     var body: some View {
         Form {
@@ -139,6 +140,27 @@ private struct GeneralSettingsTab: View {
                 }
                 .accessibilityLabel("Keep finished agent sessions")
 
+                Toggle("Notify when an agent needs input", isOn: notificationBinding)
+                    .accessibilityLabel("Notify when an agent needs input")
+
+                if model.agentNotificationAuthorization == .denied {
+                    HStack(spacing: 8) {
+                        Image(systemName: "bell.slash.fill")
+                            .foregroundStyle(.secondary)
+                            .accessibilityHidden(true)
+                        Text("macOS banners are off; Brim will show a notch alert instead.")
+                            .font(.callout)
+                            .foregroundStyle(.secondary)
+                        Spacer(minLength: 8)
+                        Button("Open Settings…") { model.openNotificationSettings() }
+                            .accessibilityLabel("Open Notification settings")
+                    }
+                } else if let error = model.agentNotificationError {
+                    Label(error, systemImage: "info.circle.fill")
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                }
+
                 HStack(spacing: 8) {
                     Text("Finished and failed sessions clear automatically; working ones stay until they report again.")
                         .font(.caption)
@@ -153,7 +175,7 @@ private struct GeneralSettingsTab: View {
             } header: {
                 Text("Agents")
             } footer: {
-                Text("Enable the Agent Status module in Modules to listen. Tools post local events to this socket or a brim://agent URL; nothing leaves the Mac.")
+                Text("Enable the Agent Status module in Modules to listen. Alerts are opt-in and local: Brim shows a notch alert, and a macOS banner when notifications are allowed. Nothing leaves the Mac.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -192,7 +214,34 @@ private struct GeneralSettingsTab: View {
         .onAppear {
             model.refreshLaunchAtLogin()
             model.refreshAutomationStatus()
+            Task { await model.refreshAgentNotificationAuthorization() }
         }
+        .alert("Enable agent alerts?", isPresented: $showNotificationExplanation) {
+            Button("Cancel", role: .cancel) {}
+            Button("Enable") {
+                Task { await model.requestAgentNotificationPermission() }
+            }
+        } message: {
+            Text("Brim will show a small alert under the notch when an agent is waiting for you or has failed, but only while the panel is closed. It will also use a macOS banner when notifications are allowed. Nothing leaves the Mac.")
+        }
+    }
+
+    private var notificationBinding: Binding<Bool> {
+        Binding(
+            get: { model.settings.agentNotificationsEnabled },
+            set: { enabled in
+                if !enabled {
+                    model.settings.agentNotificationsEnabled = false
+                    model.agentNotificationError = nil
+                    return
+                }
+                if model.agentNotificationAuthorization.isAuthorized {
+                    model.settings.agentNotificationsEnabled = true
+                } else {
+                    showNotificationExplanation = true
+                }
+            }
+        )
     }
 
     private func milliseconds(_ seconds: Double) -> Int {

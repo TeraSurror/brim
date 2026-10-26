@@ -4,7 +4,7 @@ This file is the handoff between sessions. Read it with `AGENTS.md` and the spec
 before ending a session.
 
 **Last updated:** 2026-10-25
-**Current milestone:** M3 — agent status (F7), code complete; manual sign-off pending
+**Current milestone:** M3 — F7 agent status and F8 agent alerts/open project, code complete; manual sign-off pending
 **Next action:** run the M1, M2 and M3 manual checks in [`TESTING.md`](TESTING.md). Then design the next M3 feature
 (quick prompt or send-to-assistant) before writing its acceptance criteria.
 
@@ -23,11 +23,37 @@ before ending a session.
 | --- | --- |
 | M1 — Notch panel shell | Code complete (F1–F5), 47 unit tests pass, manual visual sign-off pending |
 | M2 — Media controls | Code complete (F6), 100 unit tests pass, real-player and visual sign-off pending |
-| M3 — AI tools and IDE integration | F7 (agent status) code complete; 157 unit tests pass; manual sign-off pending. Quick prompt and send-to-assistant are not designed |
+| M3 — AI tools and IDE integration | F7 (agent status) and F8 (alerts/open project) code complete; 184 unit tests pass; manual sign-off pending. Quick prompt and send-to-assistant are not designed |
 | Stretch goals | Not started |
 
 Test machine: macOS 26.6.2, Apple Silicon. Displays seen during development: primary 1920×1080 (no notch) and built-in
 1470×956 with a 179×32 notch. Minimum target remains macOS 14.
+
+## M3 F8 — what exists
+
+F8 adds opt-in agent alerts and a project action without introducing network access:
+
+```
+Sources/BrimKit/Model/AgentNotification.swift          notification content + authorization status
+Sources/BrimKit/State/AgentNotificationTracker.swift    transition rules (waiting/error, no duplicates, panel-aware)
+Sources/BrimKit/State/AgentAlertGeometry.swift          pure notch/toast placement
+Sources/BrimKit/Services/UserNotificationService.swift  UNUserNotificationCenter wrapper + click routing
+Sources/BrimKit/Services/WorkspaceService.swift          opens a project folder in Finder
+Sources/BrimKit/Window/AgentAlertPresenter.swift        notch alert window, auto-dismiss, click action
+Sources/BrimKit/UI/AgentAlertView.swift                  the notch alert card
+```
+
+Changed: `AgentModule` posts a system notification when macOS allows it and falls back to Brim's notch alert
+otherwise; `AppModel` owns the opt-in setting/permission state; `Settings` is schema 4 with
+`agentNotificationsEnabled`; the Agents settings section has the explanation/toggle/denial note; agent rows have a
+folder button; diagnostics include notification state.
+
+The macOS notification path is correct but cannot prompt for this ad-hoc dev build; macOS returns “Notifications are
+not allowed for this application.” The notch alert is the guaranteed path in development, and system banners are used
+when a signed build has permission. Clicking either kind of alert opens the session's `cwd` in Finder.
+
+Tests: `AgentNotificationTrackerTests`, `AgentAlertGeometryTests`, notification/open-project cases in
+`AgentModuleTests`, schema-4 migration and AppModel permission tests. 184 tests total.
 
 ## M3 — what exists
 
@@ -50,7 +76,7 @@ finished sessions; `Settings` is schema 3 with `agentFinishedRetentionMinutes`; 
 registers the `brim` URL scheme; `Log` gains the `agent` category.
 
 Tests: `AgentEventTests`, `AgentRosterTests`, `AgentSocketServiceTests` (real temp socket, malformed/oversized input),
-`AgentURLRouterTests`, `AgentModuleTests`, plus schema-3 and AppModel retention/clear tests. 157 tests total.
+`AgentURLRouterTests`, `AgentModuleTests`, plus schema-3 and AppModel retention/clear tests. 184 tests total after F8.
 
 The Claude Code hook is documented in [`TESTING.md`](TESTING.md) and the README; the generic contract is any executable
 that writes one JSON object per line to the socket or opens a `brim://agent?...` URL.
@@ -244,6 +270,25 @@ could not be automated are listed under **Manual sign-off still needed**.
 - [ ] **Manual visual sign-off**: light/dark mode, a long session list, and the card beside clock + media on the notched
   display. See [`TESTING.md`](TESTING.md).
 
+## M3 F8 acceptance checklist
+
+- [x] **Opt-in only**: Agent alerts are off by default; enabling them shows an in-app explanation before any macOS
+  permission request. Nothing is requested at launch.
+- [x] **Transition rules**: a session newly entering `waiting` or `error` alerts once; repeated events in the same state
+  do not. A transition back through working can alert again. An open panel suppresses alerts. Unit tested.
+- [x] **System path**: with notification authorization, `UNUserNotificationCenter` posts a banner with the session's
+  title/body and `cwd`; clicking it opens the project. Unit tested through the module/fake notifier; real banners need a
+  signed build on this machine.
+- [x] **Notch-alert fallback**: when macOS notifications are unavailable/denied, a 360×72 card appears under the notch,
+  carries the same title/body, auto-dismisses after 7 seconds, and does not activate Brim. Verified against the running
+  ad-hoc build with the window-list and accessibility tree.
+- [x] **Notch-alert action**: the folder button opens the project in Finder; the close button dismisses it. Row folders
+  use the same workspace service. Verified for the panel row; the toast uses the same tested path.
+- [x] **Settings schema 4**: the notification flag round-trips; schema 3 files migrate without losing values; a denied
+  system permission keeps the notch fallback enabled and explains why.
+- [x] **Diagnostics** include notification enabled/authorization state.
+- [ ] **Manual sign-off**: a signed build's macOS banner, its click behavior, and the notch alert in light/dark mode.
+
 ## Manual sign-off still needed
 
 These need a human at the screen; this environment could not take screenshots (no Screen Recording permission for the
@@ -265,6 +310,8 @@ agent process). Run through [`TESTING.md`](TESTING.md).
   hook and user settings are installed on the development machine and verified with the exact command Claude Code runs
   (synthetic payload); a real session still needs a restart and sign-off.
 - M3: keyboard/VoiceOver use of the session dismiss and clear controls.
+- M3 F8: a signed build's macOS banner, its click-to-open-project behavior, and the permission prompt.
+- M3 F8: the notch alert in light/dark mode, with the pointer and another app active.
 
 ## Verification performed this session
 
@@ -323,6 +370,22 @@ agent process). Run through [`TESTING.md`](TESTING.md).
 - Quitting Brim removed the socket file. Disabling the module is covered by unit tests and uses the same stop path.
 - The user's original schema-2 settings file was restored after the run.
 
+### M3 F8 verification (2026-10-25)
+
+- `swift test` — 184 tests, 0 failures. New coverage: notification transition rules, notch-alert geometry, module
+  fallback/open-project/alert-dismiss behavior, schema-4 migration and AppModel permission behavior.
+- `./build.sh debug` — app bundle builds and signs with `UserNotifications` linked.
+- Running ad-hoc build with Agent Status on and alerts enabled: sending a `waiting` event while the panel was closed
+  produced a `361×72` window at `(2475, 40)` under the 179×32 notch. The accessibility tree read “Claude Code needs your
+  input” and the session detail. It disappeared after the 7-second auto-dismiss and Brim kept running.
+- Settings showed the toggle on and the note “macOS banners are off; Brim will show a notch alert instead.” The backend
+  reports `authorizationStatus = denied` for this ad-hoc bundle; `requestAuthorization` fails with “Notifications are
+  not allowed for this application” on macOS 26.6.2. This is a signing limitation, not a Brim logic failure; signed
+  builds should get the banner path.
+- The row folder button opened Finder at the session's `cwd`. The notch alert uses the same `WorkspaceService` and the
+  action is unit tested through `FakeWorkspace`.
+- Test sessions were cleared; Brim was left running. The development settings file is now schema 4 with agent alerts on.
+
 ## Decisions log
 
 | Date | Decision | Why |
@@ -358,6 +421,10 @@ agent process). Run through [`TESTING.md`](TESTING.md).
 | 2026-10-25 | Never auto-expire working/waiting sessions | A long tool run that emits no event for a while is not a failure; the user can dismiss it |
 | 2026-10-25 | Agent Status is off by default, needs no permission and has no network code | Keeps the M1/M2 panel unchanged and preserves the no-prompt-at-launch rule |
 | 2026-10-25 | Schema 3 adds a 10-minute finished-session retention | The panel should clear old completions without user housekeeping, but failures stay visible long enough to notice |
+| 2026-10-25 | Agent alerts use a notch card when macOS notifications are unavailable | Ad-hoc dev builds cannot register for `UNUserNotificationCenter`; the opt-in feature must still work and match Brim's visual language |
+| 2026-10-25 | Alerts fire only on a transition into waiting/error, and not while a panel is open | Repeated hooks should not spam banners; the user is already looking when the panel is open |
+| 2026-10-25 | Open project uses Finder rather than Terminal | No app-specific terminal detection or Automation permission; Finder always exists and the path is visible |
+| 2026-10-25 | Schema 4 adds the opt-in agent alert flag | The alert is off by default and never asks for a permission at launch |
 
 ## Session log
 
@@ -464,3 +531,17 @@ agent process). Run through [`TESTING.md`](TESTING.md).
 - Claude Code reads hooks at session start; the running `claude` process predates the config, so a restart/new session
   is required. `/hooks` confirms registration and `claude --debug=hooks` shows execution.
 - Brim was left running with Agent Status enabled. Real-session sign-off is still pending.
+
+### 2026-10-25 — M3 F8 agent alerts and open project
+
+- Implemented opt-in alerts: notification transition tracker, `UNUserNotificationCenter` wrapper, notch-alert fallback,
+  settings schema 4, permission explanation and denial note, diagnostics, and Finder project actions on rows and alerts.
+- Found the macOS constraint the hard way: `requestAuthorization` returns “Notifications are not allowed for this
+  application” for the ad-hoc `LSUIElement` build, even after copying it to `/Applications` and registering it with
+  LaunchServices. A signed build is required for system banners.
+- Added the notch-alert window as the guaranteed path: a 360×72 card under the notch, auto-dismissing after 7 seconds,
+  non-activating, with open-project and dismiss buttons. Verified it with a live event and the window/accessibility
+  lists; Brim stayed running after dismissal.
+- Added folder buttons to agent rows and verified Finder opens the session's `cwd`.
+- 184 tests pass. Remaining: signed-build banner/click sign-off, notch-alert light/dark/VoiceOver sign-off. Quick prompt and
+  send-to-assistant are still not designed.

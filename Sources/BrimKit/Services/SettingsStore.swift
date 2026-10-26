@@ -8,6 +8,7 @@ public enum SettingsMigrator {
         0: { _ in }, // pre-versioned files only gain the schemaVersion key
         1: { _ in }, // schema 2 adds preferredPlayerBundleID; nil is the automatic default
         2: { _ in }, // schema 3 adds agent retention; the 10-minute default is applied by decoding
+        3: { _ in }, // schema 4 adds the opt-in agent notification flag; false is the default
     ]
 
     public static func migrate(_ data: Data) throws -> Settings {

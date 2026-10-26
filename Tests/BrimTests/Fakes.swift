@@ -284,9 +284,14 @@ final class FakeAgentControllingModule: BrimModule, AgentModuleControlling {
     var isListening = false
     var sessionCount = 0
     var finishedCount = 0
+    var notificationsEnabled = false
+    var notificationAuthorization: NotificationAuthorization = .notDetermined
+    var requestResult: NotificationAuthorization = .authorized
     private(set) var isEnabled = false
     private(set) var appliedRetention: [Double] = []
     private(set) var clearFinishedCount = 0
+    private(set) var notificationRequests = 0
+    private(set) var openedProjects: [AgentSession] = []
 
     func setEnabled(_ enabled: Bool) { isEnabled = enabled }
 
@@ -298,6 +303,85 @@ final class FakeAgentControllingModule: BrimModule, AgentModuleControlling {
         clearFinishedCount += 1
     }
 
+    func setNotificationsEnabled(_ enabled: Bool) {
+        notificationsEnabled = enabled
+    }
+
+    func refreshNotificationAuthorization() async {
+        if notificationAuthorization == .notDetermined {
+            notificationAuthorization = .authorized
+        }
+    }
+
+    func requestNotificationAuthorization() async -> NotificationAuthorization {
+        notificationRequests += 1
+        notificationAuthorization = requestResult
+        return requestResult
+    }
+
+    func openProject(_ session: AgentSession) {
+        openedProjects.append(session)
+    }
+
     func compactView() -> AnyView { AnyView(EmptyView()) }
     func expandedView() -> AnyView { AnyView(EmptyView()) }
+}
+
+@MainActor
+final class FakeAgentNotifier: AgentNotifying {
+    var authorization: NotificationAuthorization
+    var onOpenProject: ((String) -> Void)?
+    private(set) var posted: [AgentNotification] = []
+    private(set) var requestCount = 0
+    private(set) var refreshCount = 0
+    var requestResult: NotificationAuthorization = .authorized
+
+    init(authorization: NotificationAuthorization = .authorized) {
+        self.authorization = authorization
+    }
+
+    func refreshAuthorization() async {
+        refreshCount += 1
+    }
+
+    func requestAuthorization() async -> NotificationAuthorization {
+        requestCount += 1
+        authorization = requestResult
+        return authorization
+    }
+
+    func post(_ notification: AgentNotification) {
+        posted.append(notification)
+    }
+}
+
+@MainActor
+final class FakeWorkspace: WorkspaceOpening {
+    var succeeds = true
+    private(set) var openedPaths: [String] = []
+
+    func openDirectory(_ path: String) -> Bool {
+        openedPaths.append(path)
+        return succeeds
+    }
+}
+
+@MainActor
+final class FakeAgentAlertPresenter: AgentAlertPresenting {
+    private(set) var presented: [AgentNotification] = []
+    private(set) var dismissCount = 0
+    private var onOpen: (() -> Void)?
+
+    func present(_ notification: AgentNotification, onOpen: @escaping () -> Void) {
+        presented.append(notification)
+        self.onOpen = onOpen
+    }
+
+    func dismiss() {
+        dismissCount += 1
+    }
+
+    func openLatest() {
+        onOpen?()
+    }
 }

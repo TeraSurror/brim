@@ -25,7 +25,8 @@ public final class AppController {
             scheduler: scheduler
         )
         let media = MediaModule(service: coordinator, scheduler: scheduler)
-        let agent = AgentModule()
+        let screens = NSScreenProvider()
+        let agent = AgentModule(alertPresenter: AgentAlertPresenter(screens: screens, scheduler: scheduler))
         let model = AppModel(
             store: JSONSettingsStore(),
             loginItems: SMLoginItemService(),
@@ -40,7 +41,7 @@ public final class AppController {
         self.model = model
         self.coordinator = coordinator
         self.agent = agent
-        self.screens = NSScreenProvider()
+        self.screens = screens
         self.scheduler = scheduler
         self.monitor = NSEventPointerMonitor()
     }
@@ -67,7 +68,9 @@ public final class AppController {
                 agents: AgentDiagnostics(
                     socketPath: self.agent.socketPath,
                     listening: self.agent.isListening,
-                    summary: self.agent.summary
+                    summary: self.agent.summary,
+                    notificationsEnabled: self.agent.notificationsEnabled,
+                    notificationAuthorization: self.agent.notificationAuthorization
                 )
             )
         }
@@ -85,6 +88,10 @@ public final class AppController {
             .removeDuplicates()
             .sink { [weak self] settings in self?.windowManager?.apply(settings) }
             .store(in: &cancellables)
+
+        Task { [weak self] in
+            await self?.model.refreshAgentNotificationAuthorization()
+        }
 
         Log.general.info("Brim started with \(self.model.activeModules.count, privacy: .public) active module(s)")
     }

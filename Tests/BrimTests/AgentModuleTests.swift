@@ -4,6 +4,9 @@ import XCTest
 @MainActor
 final class AgentModuleTests: XCTestCase {
     private var listener: FakeAgentListener!
+    private var notifier: FakeAgentNotifier!
+    private var workspace: FakeWorkspace!
+    private var alerts: FakeAgentAlertPresenter!
     private var module: AgentModule!
     private let base = Date(timeIntervalSince1970: 1_000)
     private var now = Date(timeIntervalSince1970: 1_000)
@@ -11,8 +14,14 @@ final class AgentModuleTests: XCTestCase {
     override func setUp() async throws {
         now = base
         listener = FakeAgentListener()
+        notifier = FakeAgentNotifier()
+        workspace = FakeWorkspace()
+        alerts = FakeAgentAlertPresenter()
         module = AgentModule(
             listener: listener,
+            notifier: notifier,
+            workspace: workspace,
+            alertPresenter: alerts,
             retentionMinutes: 10,
             now: { [unowned self] in self.now }
         )
@@ -23,6 +32,7 @@ final class AgentModuleTests: XCTestCase {
         status: AgentStatus = .working,
         title: String? = "Fix parser",
         detail: String? = "Running tests",
+        cwd: String? = "/tmp/project",
         at offset: TimeInterval = 0
     ) throws -> AgentEvent {
         try XCTUnwrap(AgentEvent(
@@ -31,6 +41,7 @@ final class AgentModuleTests: XCTestCase {
             status: status,
             title: title,
             detail: detail,
+            cwd: cwd,
             timestamp: base.addingTimeInterval(offset)
         ))
     }
@@ -146,9 +157,119 @@ final class AgentModuleTests: XCTestCase {
         XCTAssertEqual(module.socketPath, listener.socketPath)
     }
 
+    func testNotificationsAreOffByDefault() throws {
+        module.setEnabled(true)
+        module.ingest(try event(status: .waiting))
+
+        XCTAssertFalse(module.notificationsEnabled)
+        XCTAssertTrue(notifier.posted.isEmpty)
+        XCTAssertTrue(alerts.presented.isEmpty)
+    }
+
+    func testWaitingNotifiesOnceAndAgainAfterWorkResumes() throws {
+        module.setNotificationsEnabled(true)
+        module.setEnabled(true)
+
+        module.ingest(try event(status: .working))
+        module.ingest(try event(status: .waiting, at: 1))
+        XCTAssertEqual(notifier.posted.count, 1)
+        XCTAssertTrue(notifier.posted[0].title.contains("needs your input"))
+        XCTAssertEqual(notifier.posted[0].cwd, "/tmp/project")
+
+        module.ingest(try event(status: .waiting, at: 2))
+        XCTAssertEqual(notifier.posted.count, 1)
+
+        module.ingest(try event(status: .working, at: 3))
+        module.ingest(try event(status: .waiting, at: 4))
+        XCTAssertEqual(notifier.posted.count, 2)
+        XCTAssertTrue(alerts.presented.isEmpty)
+    }
+
+    func testFailureNotifiesWhenEnabled() throws {
+        module.setNotificationsEnabled(true)
+        module.setEnabled(true)
+
+        module.ingest(try event(status: .error))
+
+        XCTAssertEqual(notifier.posted.count, 1)
+        XCTAssertTrue(notifier.posted[0].title.contains("failed"))
+    }
+
+    func testAnOpenPanelSuppressesNotifications() throws {
+        module.setNotificationsEnabled(true)
+        module.setEnabled(true)
+        module.setPanelActive(true)
+
+        module.ingest(try event(status: .waiting))
+
+        XCTAssertTrue(notifier.posted.isEmpty)
+        XCTAssertTrue(alerts.presented.isEmpty)
+    }
+
+    func testDeniedSystemAuthorizationFallsBackToTheNotchAlert() throws {
+        notifier.authorization = .denied
+        module.setNotificationsEnabled(true)
+        module.setEnabled(true)
+
+        module.ingest(try event(status: .waiting))
+
+        XCTAssertTrue(notifier.posted.isEmpty)
+        XCTAssertEqual(alerts.presented.count, 1)
+        XCTAssertEqual(alerts.presented[0].status, .waiting)
+        XCTAssertEqual(alerts.presented[0].cwd, "/tmp/project")
+    }
+
+    func testTheNotchAlertOpensTheProject() throws {
+        notifier.authorization = .denied
+        module.setNotificationsEnabled(true)
+        module.setEnabled(true)
+        module.ingest(try event(status: .waiting))
+
+        alerts.openLatest()
+
+        XCTAssertEqual(workspace.openedPaths, ["/tmp/project"])
+    }
+
+    func testDisablingAlertsDismissesTheNotchAlert() {
+        module.setNotificationsEnabled(true)
+        module.setNotificationsEnabled(false)
+
+        XCTAssertEqual(alerts.dismissCount, 1)
+    }
+
+    func testRequestingNotificationAuthorizationUpdatesTheModule() async {
+        notifier.requestResult = .authorized
+
+        let status = await module.requestNotificationAuthorization()
+
+        XCTAssertEqual(status, .authorized)
+        XCTAssertEqual(module.notificationAuthorization, .authorized)
+        XCTAssertEqual(notifier.requestCount, 1)
+    }
+
+    func testOpeningAProjectUsesTheWorkspace() throws {
+        module.setEnabled(true)
+        module.ingest(try event(cwd: "/tmp/project"))
+        let session = try XCTUnwrap(module.sessions.first)
+
+        module.openProject(session)
+
+        XCTAssertEqual(workspace.openedPaths, ["/tmp/project"])
+    }
+
+    func testNotificationClickOpensTheProject() {
+        notifier.onOpenProject?("/tmp/clicked-project")
+
+        XCTAssertEqual(workspace.openedPaths, ["/tmp/clicked-project"])
+    }
+
     func testAFailedSocketReportsNotListening() {
         let failing = FailingAgentListener()
-        let scoped = AgentModule(listener: failing)
+        let scoped = AgentModule(
+            listener: failing,
+            notifier: FakeAgentNotifier(),
+            workspace: FakeWorkspace()
+        )
         scoped.setEnabled(true)
 
         XCTAssertFalse(scoped.isListening)

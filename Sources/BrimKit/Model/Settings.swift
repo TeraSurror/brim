@@ -2,7 +2,7 @@ import Foundation
 
 /// Persisted user settings. Custom decoding keeps old files loadable after a schema bump.
 public struct Settings: Codable, Equatable, Sendable {
-    public static let currentSchemaVersion = 3
+    public static let currentSchemaVersion = 4
     public static let hoverDelayRange: ClosedRange<Double> = 0.05...1.5
     public static let collapseDelayRange: ClosedRange<Double> = 0.1...2.0
     public static let agentRetentionRange: ClosedRange<Double> = 1...120
@@ -24,6 +24,8 @@ public struct Settings: Codable, Equatable, Sendable {
     public var preferredPlayerBundleID: String?
     /// Minutes a done or failed agent session stays in the panel before it is pruned.
     public var agentFinishedRetentionMinutes: Double = 10
+    /// Post a local notification when an agent newly needs input or fails while the panel is closed.
+    public var agentNotificationsEnabled: Bool = false
 
     public init() {}
 
@@ -47,5 +49,7 @@ public struct Settings: Codable, Equatable, Sendable {
         agentFinishedRetentionMinutes = retention.isFinite
             ? min(max(retention, Self.agentRetentionRange.lowerBound), Self.agentRetentionRange.upperBound)
             : defaults.agentFinishedRetentionMinutes
+        agentNotificationsEnabled = try container.decodeIfPresent(Bool.self, forKey: .agentNotificationsEnabled)
+            ?? defaults.agentNotificationsEnabled
     }
 }

@@ -18,9 +18,12 @@ struct AgentExpandedView: View {
                     TimelineView(.periodic(from: .now, by: 30)) { context in
                         VStack(spacing: 6) {
                             ForEach(module.sessions) { session in
-                                AgentSessionRow(session: session, now: context.date) {
-                                    module.dismiss(session)
-                                }
+                                AgentSessionRow(
+                                    session: session,
+                                    now: context.date,
+                                    onOpenProject: { module.openProject(session) },
+                                    onDismiss: { module.dismiss(session) }
+                                )
                             }
                         }
                     }
@@ -102,6 +105,7 @@ struct AgentExpandedView: View {
 private struct AgentSessionRow: View {
     let session: AgentSession
     let now: Date
+    let onOpenProject: () -> Void
     let onDismiss: () -> Void
 
     var body: some View {
@@ -149,6 +153,19 @@ private struct AgentSessionRow: View {
             }
             .accessibilityElement(children: .combine)
             .accessibilityLabel(accessibilityLabel)
+
+            if session.cwd?.isEmpty == false {
+                Button(action: onOpenProject) {
+                    Image(systemName: "folder")
+                        .font(.system(size: 9, weight: .semibold))
+                        .foregroundStyle(.white.opacity(0.35))
+                        .frame(width: 18, height: 18)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .help("Open \(session.displayTitle) in Finder")
+                .accessibilityLabel("Open \(session.agentName) session \(session.displayTitle) in Finder")
+            }
 
             Button(action: onDismiss) {
                 Image(systemName: "xmark")

@@ -6,13 +6,14 @@ panel. The source of truth for features and acceptance criteria is
 
 ## Current state
 
-M1, M2 and M3 F7 are implemented: the notch panel shell (F1–F5), the clock and Now Playing modules, agent status over a
-local Unix socket and `brim://` URL (F7), settings schema 3, the per-screen window manager, and the bundled MediaRemote
-helper (built from a pinned third-party source). 157 unit tests pass. [`docs/PROGRESS.md`](docs/PROGRESS.md) is the
-handoff between sessions — read it after the spec. Visual sign-off for M1, the real-player/two-player sign-off for M2
-and the real-Claude-Code-hook/visual sign-off for F7 are still pending; the checklist is
-[`docs/TESTING.md`](docs/TESTING.md). The next M3 features (quick prompt, send-to-assistant) are not designed; brainstorm
-with the user before writing acceptance criteria.
+M1, M2 and M3 F7/F8 are implemented: the notch panel shell (F1–F5), the clock and Now Playing modules, agent status
+over a local Unix socket and `brim://` URL (F7), opt-in agent alerts and Finder project actions (F8), settings schema 4,
+the per-screen window manager, and the bundled MediaRemote helper (built from a pinned third-party source). 184 unit
+tests pass. [`docs/PROGRESS.md`](docs/PROGRESS.md) is the handoff between sessions — read it after the spec. Visual
+sign-off for M1, the real-player/two-player sign-off for M2, the real-Claude-Code-hook/visual sign-off for F7 and the
+signed-build banner/visual sign-off for F8 are still pending; the checklist is [`docs/TESTING.md`](docs/TESTING.md).
+The next M3 features (quick prompt, send-to-assistant) are not designed; brainstorm with the user before writing
+acceptance criteria.
 
 Brim copies its project layout from its sibling app **Speakeasy** (`../speakeasy`, a menu bar manager), which is further
 along (M1 and M2 shipped). When this file says "as in Speakeasy", open the named Speakeasy file and copy its pattern.
@@ -40,14 +41,15 @@ brim/
 │   │   └── main.swift                 # only: MainActor.assumeIsolated { BrimLauncher.run() }
 │   └── BrimKit/
 │       ├── App/                       # composition root: launcher, AppDelegate, AppController, AppModel, WindowPresenter
-│       ├── Window/                    # NotchWindow (NSPanel), per-screen window manager, pointer tracking
-│       ├── State/                     # hover/expand state machine, timers, agent roster. Pure logic, no AppKit
+│       ├── Window/                    # NotchWindow (NSPanel), per-screen window manager, pointer tracking, notch alert
+│       ├── State/                     # hover/expand state machine, timers, agent roster/alert geometry. Pure logic, no AppKit
 │       ├── Modules/                   # BrimModule protocol, module registry, implementations (Clock, Media, Agent…)
 │       ├── Services/                  # Protocols.swift + real implementations (screens, now playing, login item,
-│       │                              #   settings, MediaRemote helper, Spotify/Music Apple Events, agent socket/URL)
-│       ├── Model/                     # value types: ScreenInfo, PanelState, NowPlaying, AgentEvent, Settings
+│       │                              #   settings, MediaRemote helper, Spotify/Music Apple Events, agent socket/URL,
+│       │                              #   local notifications, Finder project opening)
+│       ├── Model/                     # value types: ScreenInfo, PanelState, NowPlaying, AgentEvent/Notification, Settings
 │       ├── Support/                   # Log.swift (os.Logger categories), Diagnostics.swift
-│       └── UI/                        # SwiftUI panel views, media/agent cards and settings. Never touches NSPanel
+│       └── UI/                        # SwiftUI panel views, media/agent cards, notch alert and settings. Never touches NSPanel
 ├── Tests/
 │   └── BrimTests/
 │       ├── Fakes.swift                # every fake in one file
@@ -116,7 +118,8 @@ These come from the spec's "Instructions for the coding agent" and Speakeasy's c
 12. **Agent events stay local.** The Unix socket lives in Application Support with a `0700` directory and `0600` file,
     rejects other users with `getpeereid`, and is removed when the module is disabled or Brim quits. `brim://agent`
     input is validated as untrusted; never execute a field from it. Enabling Agent Status is the only switch that
-    starts the listener — no permission prompt is involved.
+    starts the listener — no permission prompt is involved. Agent alerts are a separate opt-in; when macOS refuses
+    notification authorization (notably ad-hoc dev builds), use the notch alert rather than silently dropping the alert.
 
 ## Code conventions (as in Speakeasy)
 
@@ -154,7 +157,8 @@ open build/Brim.app
 
 - Unit test: the hover/expand state machine (fake clock), screen and notch geometry (recorded `ScreenInfo` values), the
   module registry, settings migrations, the media module against a fake `NowPlayingService`, and agent event validation,
-  roster ordering/retention, the socket listener against a real temp socket, and URL parsing.
+  roster ordering/retention, notification transitions/geometry, the socket listener against a real temp socket, and URL
+  parsing.
 - Each test file covers one unit, is a `@MainActor final class …Tests: XCTestCase` and builds its fakes in `setUp`.
 - After each feature, add a row to `docs/TESTING.md` that maps manual checks to that feature's acceptance criteria:
   notched MacBook, with and without an external display, light and dark mode, over a full-screen app. Check idle CPU in

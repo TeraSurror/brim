@@ -155,6 +155,17 @@ still a `BrimModule`; this first one needs no permission and no network.
 - [ ] Settings schema 3 stores the retention period and migrates schema 2 files without losing values.
 - [ ] Claude Code is documented as the reference integration; the same contract works for Codex, Cursor, VS Code and any tool that can write one JSON line or open a URL.
 
+**F8. Agent alerts and project actions**
+
+Agent alerts are opt-in, local, and never requested at launch.
+
+- [ ] A session that newly enters `waiting` or `error` while no panel is open produces one alert; repeated events in the same state do not repeat it, and a transition back through working can alert again.
+- [ ] Alerts use a macOS notification when the build has permission, and Brim's own notch card otherwise. The notch card is non-activating, auto-dismisses, and carries the same title/body.
+- [ ] Clicking an alert or the folder button on an agent row opens the session's `cwd` in Finder. Rows without a path have no folder action.
+- [ ] Enabling alerts shows an in-app explanation before any system permission request; denial leaves the notch alert working.
+- [ ] Settings schema 4 stores the opt-in flag and migrates older files without losing values.
+- [ ] Diagnostics include the alert setting and authorization state.
+
 **Later M3 features (not designed yet)**
 
 - **Quick prompt.** A text box in the expanded panel that sends a prompt to a chosen assistant. Needs per-provider

@@ -17,6 +17,9 @@ public final class AppModel: ObservableObject {
             if settings.agentFinishedRetentionMinutes != oldValue.agentFinishedRetentionMinutes {
                 syncAgentRetention()
             }
+            if settings.agentNotificationsEnabled != oldValue.agentNotificationsEnabled {
+                syncAgentNotifications()
+            }
         }
     }
 
@@ -24,6 +27,8 @@ public final class AppModel: ObservableObject {
     @Published public var launchAtLoginError: String?
     @Published public private(set) var activeModules: [any BrimModule] = []
     @Published public private(set) var automationStatus: PermissionStatus = .notDetermined
+    @Published public private(set) var agentNotificationAuthorization: NotificationAuthorization = .notDetermined
+    @Published public var agentNotificationError: String?
 
     /// Screen IDs whose panel is peek or expanded. Modules see one flat "active" flag so a second display
     /// keeping its panel open never stops the first display's monitors.
@@ -55,6 +60,7 @@ public final class AppModel: ObservableObject {
         syncModules()
         syncPreferredPlayer()
         syncAgentRetention()
+        syncAgentNotifications()
         refreshAutomationStatus()
         if settings.launchAtLogin != launchAtLogin {
             settings.launchAtLogin = launchAtLogin
@@ -180,6 +186,58 @@ public final class AppModel: ObservableObject {
 
     private func syncAgentRetention() {
         agentModule?.applyRetention(minutes: settings.agentFinishedRetentionMinutes)
+    }
+
+    private func syncAgentNotifications() {
+        agentModule?.setNotificationsEnabled(settings.agentNotificationsEnabled)
+    }
+
+    /// Called only after the in-app explanation. A system denial keeps the notch fallback on.
+    public func requestAgentNotificationPermission() async {
+        guard let module = agentModule else { return }
+
+        // macOS refuses to present the notification prompt for an accessory-only app. A settings window
+        // is already visible, so briefly behaving like a regular app lets the system show its prompt.
+        let previousPolicy = NSApp?.activationPolicy() ?? .accessory
+        if let app = NSApp, previousPolicy != .regular {
+            _ = app.setActivationPolicy(.regular)
+            app.activate(ignoringOtherApps: true)
+        }
+        defer {
+            if let app = NSApp, previousPolicy != .regular {
+                _ = app.setActivationPolicy(previousPolicy)
+            }
+        }
+
+        let status = await module.requestNotificationAuthorization()
+        agentNotificationAuthorization = status
+        Log.agent.info("Agent notifications permission result: \(status.rawValue, privacy: .public)")
+
+        // The notch alert is the guaranteed path; macOS banners are used when the system allows them.
+        if !settings.agentNotificationsEnabled {
+            settings.agentNotificationsEnabled = true
+        }
+        agentNotificationError = status.isAuthorized
+            ? nil
+            : "macOS banners are unavailable; Brim will show a notch alert."
+    }
+
+    /// Reads the system status again; the user can change it in System Settings behind Brim's back.
+    public func refreshAgentNotificationAuthorization() async {
+        guard let module = agentModule else { return }
+        await module.refreshNotificationAuthorization()
+        agentNotificationAuthorization = module.notificationAuthorization
+
+        guard settings.agentNotificationsEnabled else { return }
+        agentNotificationError = agentNotificationAuthorization.isAuthorized
+            ? nil
+            : "macOS banners are unavailable; Brim will show a notch alert."
+    }
+
+    public func openNotificationSettings() {
+        if let url = URL(string: "x-apple.systempreferences:com.apple.preference.notifications") {
+            NSWorkspace.shared.open(url)
+        }
     }
 
     // MARK: - Permissions

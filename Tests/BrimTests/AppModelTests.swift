@@ -50,6 +50,36 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(agent.clearFinishedCount, 1)
     }
 
+    func testAgentNotificationSettingIsForwardedToTheModule() {
+        XCTAssertFalse(agent.notificationsEnabled)
+
+        model.settings.agentNotificationsEnabled = true
+
+        XCTAssertTrue(agent.notificationsEnabled)
+    }
+
+    func testRequestingNotificationPermissionTurnsTheSettingOn() async {
+        await model.requestAgentNotificationPermission()
+
+        XCTAssertEqual(agent.notificationRequests, 1)
+        XCTAssertEqual(model.agentNotificationAuthorization, .authorized)
+        XCTAssertTrue(model.settings.agentNotificationsEnabled)
+        XCTAssertNil(model.agentNotificationError)
+    }
+
+    func testDeniedSystemPermissionStillEnablesNotchAlerts() async {
+        agent.requestResult = .denied
+
+        await model.requestAgentNotificationPermission()
+
+        XCTAssertEqual(model.agentNotificationAuthorization, .denied)
+        XCTAssertTrue(model.settings.agentNotificationsEnabled)
+        XCTAssertEqual(
+            model.agentNotificationError,
+            "macOS banners are unavailable; Brim will show a notch alert."
+        )
+    }
+
     func testLaunchStateComesFromTheSystemAndIsWrittenBack() {
         XCTAssertFalse(model.launchAtLogin)
         XCTAssertFalse(store.stored.launchAtLogin)

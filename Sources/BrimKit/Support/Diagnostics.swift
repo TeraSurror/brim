@@ -12,6 +12,8 @@ struct AgentDiagnostics {
     let socketPath: String
     let listening: Bool
     let summary: AgentSummary
+    let notificationsEnabled: Bool
+    let notificationAuthorization: NotificationAuthorization
 }
 
 @MainActor
@@ -59,6 +61,10 @@ enum Diagnostics {
             lines.append(
                 "  sessions: \(agents.summary.waiting) waiting, \(agents.summary.working) working, "
                     + "\(agents.summary.errors) failed, \(agents.summary.done) done"
+            )
+            lines.append(
+                "  notifications: \(agents.notificationsEnabled ? "on" : "off"), "
+                    + "\(agents.notificationAuthorization.title)"
             )
         }
 

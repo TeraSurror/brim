@@ -59,7 +59,7 @@ Automation (only for Spotify or Music that is running). Declining must still lea
 | Lifecycle | With the panel open, quit Brim, then repeat with `kill -9`. | No `perl … mediaremote-adapter` or `brim-media-supervisor` process survives. |
 | Multi-display | Open a panel on each display, then close one. | The other panel keeps its media; the helper stops only when both are closed. |
 | Perf | Leave Brim collapsed for a minute after using media. | Under 0.5% CPU and under 80 MB memory; no Perl helper while collapsed. |
-| Settings | Change Follow, quit and relaunch. | The choice is restored from `settings.json`; schema is 3 (M3), and M2's player choice still survives. |
+| Settings | Change Follow, quit and relaunch. | The choice is restored from `settings.json`; schema is 4 (M3), and M2's player choice still survives. |
 | F5 | Settings → About → Copy Diagnostics. | The report includes a Media section: helper bundled/available, followed player, current track (no artwork). |
 | F6 | Move the panel to a display without a notch while media plays. | Same compact/expanded media layout; no crash or stale artwork. |
 
@@ -212,6 +212,26 @@ The same contract works for Codex, Cursor, VS Code extensions or any script: one
 or a `brim://agent` URL. The schema is `agent`, `session`, `status` (`working`/`waiting`/`done`/`error`), and optional
 `title`, `detail`, `costUSD`, `cwd`, `timestamp`.
 
+## M3 F8 manual verification — agent alerts and open project
+
+Turn on **Settings → General → Agents → Notify when an agent needs input**. Enabling shows Brim's explanation first;
+macOS may then show a notification prompt on a signed build.
+
+| Feature | Check | Expected |
+| --- | --- | --- |
+| F8 | Enable the alert toggle. | Brim explains what it will show; no launch-time prompt. The toggle persists across relaunch. |
+| F8 | Close the panel, then send a `waiting` event with a `cwd` (use the socket example above). | A card appears under the notch with “Claude Code needs your input” and the session detail. Brim does not activate. |
+| F8 | Wait 7 seconds. | The notch alert disappears without input. |
+| F8 | Send another `waiting` event for the same session while it is still waiting. | No duplicate alert. Send `working`, then `waiting` again: a new alert appears. |
+| F8 | Open the panel, then send a `waiting` event. | No notch alert or banner while the panel is open. |
+| F8 | Click the folder button on the notch alert. | Finder opens the session's `cwd`; the alert dismisses. |
+| F8 | Click the folder button on an agent row in the panel. | Finder opens that project. Rows without `cwd` have no folder button. |
+| F8 | Send an `error` event with the panel closed. | An alert titled “Claude Code failed” appears. |
+| F8 | On a signed build with notification permission allowed, repeat the closed-panel `waiting` check. | A macOS banner appears instead of the notch card; clicking it opens the project. |
+| F8 | Deny macOS notification permission (or use the ad-hoc dev build). | The toggle stays on, the settings note explains that banners are off and the notch alert is used, and alerts still appear. |
+| F8 | Quit and relaunch. | Schema is 4; the alert setting and retention survive. |
+| Perf | Leave Brim collapsed after alerts. | Under 0.5% CPU and under 80 MB; the alert window is destroyed after dismissal. |
+
 ## Notched vs non-notched geometry
 
 - Notched screen: the collapsed window must equal the hardware notch (recorded 179×32 on the development machine).
@@ -292,3 +312,12 @@ or a `brim://agent` URL. The schema is `agent`, `session`, `status` (`working`/`
 - **No jump-to-terminal yet.** Rows carry `cwd` but there is no “open the project” action in F7.
 - The agent card scrolls when there are more rows than fit. Native scrollbars are hidden, so use the trackpad/wheel;
   VoiceOver still reaches every row.
+- **macOS notification banners need a signed build.** The ad-hoc development bundle cannot register with
+  `UNUserNotificationCenter`; macOS returns “Notifications are not allowed for this application” without a prompt.
+  Brim falls back to a notch alert, which is the verified path in development. Do not treat a missing banner as a
+  module failure.
+- Alerts fire on a transition into waiting/failed, not on every event. A session that stays waiting does not remind
+  you again; the panel row remains until it changes or is dismissed.
+- The notch alert is transient (about 7 seconds) and shows on the notched display (or the primary display). It is not
+  added to Notification Center and does not have action categories.
+- “Open project” uses Finder. There is no terminal/editor choice yet, and a missing `cwd` disables the folder button.
