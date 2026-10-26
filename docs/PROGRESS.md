@@ -261,7 +261,9 @@ agent process). Run through [`TESTING.md`](TESTING.md).
 - M2: the Automation prompt and its denied state against the real system dialogs.
 - M2: the expanded media card next to the clock at 600×320 on the notched MacBook, in light and dark mode.
 - M3: the Agent Status card beside clock and media, in light and dark mode, with enough sessions to scroll.
-- M3: the documented Claude Code hook with a real Claude Code session (permission prompt → waiting, stop → done).
+- M3: the documented Claude Code hook with a real Claude Code session (permission prompt → waiting, stop → done). The
+  hook and user settings are installed on the development machine and verified with the exact command Claude Code runs
+  (synthetic payload); a real session still needs a restart and sign-off.
 - M3: keyboard/VoiceOver use of the session dismiss and clear controls.
 
 ## Verification performed this session
@@ -448,3 +450,17 @@ agent process). Run through [`TESTING.md`](TESTING.md).
   and socket removal on quit. Restored the user's settings afterwards.
 - 157 tests pass. Remaining: manual visual/VoiceOver sign-off and a real Claude Code hook run; F8+ are not designed.
 - Committed as `F7 agent status; local socket and brim:// ingestion` on 2026-10-25.
+
+### 2026-10-25 — F7 Claude Code integration setup
+
+- The user reported no Claude Code activity in the panel. Inspection showed the integration had not been installed:
+  `~/.brim/claude-hook.sh` was missing and `~/.claude/settings.json` had no `hooks` block. Brim was also not running at
+  one point.
+- Installed the hook script, made it executable, merged `SessionStart`, `PreToolUse`, `Notification`, `Stop` and
+  `SessionEnd` hooks into `~/.claude/settings.json`, and backed the original up to
+  `~/.claude/settings.json.brim-backup-20261025-214113`.
+- Verified the exact shell command Claude Code runs with a synthetic `Notification` payload: `log stream` showed the
+  event and Brim's accessibility tree showed “Claude Code / Needs input / Manual setup check”. Cleared the test row.
+- Claude Code reads hooks at session start; the running `claude` process predates the config, so a restart/new session
+  is required. `/hooks` confirms registration and `claude --debug=hooks` shows execution.
+- Brim was left running with Agent Status enabled. Real-session sign-off is still pending.
