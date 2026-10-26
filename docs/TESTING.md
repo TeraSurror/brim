@@ -59,7 +59,7 @@ Automation (only for Spotify or Music that is running). Declining must still lea
 | Lifecycle | With the panel open, quit Brim, then repeat with `kill -9`. | No `perl … mediaremote-adapter` or `brim-media-supervisor` process survives. |
 | Multi-display | Open a panel on each display, then close one. | The other panel keeps its media; the helper stops only when both are closed. |
 | Perf | Leave Brim collapsed for a minute after using media. | Under 0.5% CPU and under 80 MB memory; no Perl helper while collapsed. |
-| Settings | Change Follow, quit and relaunch. | The choice is restored from `settings.json`; schema is 2. |
+| Settings | Change Follow, quit and relaunch. | The choice is restored from `settings.json`; schema is 3 (M3), and M2's player choice still survives. |
 | F5 | Settings → About → Copy Diagnostics. | The report includes a Media section: helper bundled/available, followed player, current track (no artwork). |
 | F6 | Move the panel to a display without a notch while media plays. | Same compact/expanded media layout; no crash or stale artwork. |
 
@@ -72,6 +72,145 @@ Automation (only for Spotify or Music that is running). Declining must still lea
   `/usr/bin/perl build/Brim.app/Contents/Resources/MediaAdapter/mediaremote-adapter.pl "$PWD/build/Brim.app/Contents/Resources/MediaAdapter/MediaRemoteAdapter.framework" test`.
   Exit code 0 means the current macOS still allows the helper.
 - ad-hoc signing: after a rebuild, Automation may need to be granted again. Check the Automation status in Settings.
+
+## M3 manual verification — agent status (F7)
+
+Turn on **Settings → Modules → Agent Status** first. No permission prompt should appear, at launch or on enable. The
+module is local-only: it does not use the network and does not ask for Automation/Accessibility.
+
+| Feature | Check | Expected |
+| --- | --- | --- |
+| F7 | Enable Agent Status in Settings → Modules. | The module appears in the panel; `ls -l "$HOME/Library/Application Support/Brim/agent.sock"` shows a `srw-------` socket. No macOS prompt. |
+| F7 | Send a working event (below) and hover the notch. | The peek shows a status glyph, “Claude Code” and “Working” with the session title. |
+| F7 | Send a waiting event for a second session, then expand. | The waiting row is amber and first; working and done rows follow. Each row shows agent, title, detail, elapsed time and cost when provided. |
+| F7 | Press a row's dismiss button; then press “Clear” in the AGENTS header. | The dismissed row disappears; “Clear” removes every done/failed row but keeps waiting/working ones. |
+| F7 | With nothing reported, open the panel. | The card says “No agent activity”; the peek has no agent content. |
+| F7 | Set **Settings → General → Agents → Keep finished sessions** to 1 minute, send a done event, wait a minute and reopen the panel. | The done session is gone. Working/waiting sessions do not expire on their own. |
+| F7 | Disable Agent Status, then enable it again. | The socket disappears/reappears; the roster is cleared on disable. |
+| F7 | Quit Brim and check the socket path. | The socket file is gone. Relaunch with the module enabled: it returns. |
+| F7 | While Brim runs, run the `brim://agent?...` URL example below. | The event appears in the panel. |
+| F7 | Quit Brim, then run the same `open` command. | Brim launches, the event is accepted, and the next hover shows it. |
+| F7 | Send malformed JSON and a line over 8 KB. | Nothing appears; the log records the rejection; Brim keeps running and accepts the next valid event. |
+| F7 | Send an event with an older timestamp than the current session. | The session keeps its newer state; a late event cannot make a finished session look busy. |
+| F7 | Connect from another user account (if available). | The socket directory/socket permissions reject the connection; no event appears. |
+| F7 | Use the agent card with clock + media enabled on the notched display, in light and dark mode. | The three cards share the width; the agent card scrolls when there are more rows than fit; text stays readable. |
+| F7 | Use VoiceOver on the peek and card. | The peek announces the agent status/count; each row reads agent, title, status, elapsed and cost; dismiss/clear have labels. |
+| Perf | Leave Brim collapsed after using agent status, then check Activity Monitor. | Under 0.5% CPU and under 80 MB; the listener is one file descriptor, no timer. |
+
+### Agent event examples
+
+Socket, with `nc` (macOS supports `-U`):
+
+```sh
+printf '%s\n' '{"agent":"claude-code","session":"demo","status":"working","title":"Fix the parser","detail":"Running tests","costUSD":0.12}' \
+  | nc -U "$HOME/Library/Application Support/Brim/agent.sock"
+```
+
+URL:
+
+```sh
+open -g 'brim://agent?agent=claude-code&session=demo&status=waiting&title=Approve%20a%20tool%20call'
+```
+
+Actions:
+
+```sh
+open -g 'brim://agent?action=dismiss&agent=claude-code&session=demo'
+open -g 'brim://agent?action=clear'
+```
+
+### Claude Code reference hook
+
+Save this as `~/.brim/claude-hook.sh` and make it executable (`chmod +x`). It reads Claude Code's JSON payload from
+stdin, so each session gets its own row. It needs `/usr/bin/python3` (Xcode Command Line Tools); if the socket is
+missing it exits quietly, so it never blocks Claude.
+
+```sh
+#!/bin/sh
+# ~/.brim/claude-hook.sh — report Claude Code activity to Brim.
+# usage: claude-hook.sh working "Running tests"
+/usr/bin/python3 -c '
+import json, os, socket, sys, time
+status = sys.argv[1] if len(sys.argv) > 1 else "working"
+detail = sys.argv[2] if len(sys.argv) > 2 else ""
+try:
+    hook = json.load(sys.stdin)
+except Exception:
+    hook = {}
+event = {
+    "agent": "claude-code",
+    "session": str(hook.get("session_id") or "unknown"),
+    "status": status,
+    "title": "Claude Code",
+    "detail": detail,
+    "cwd": str(hook.get("cwd") or ""),
+    "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+}
+path = os.path.expanduser("~/Library/Application Support/Brim/agent.sock")
+try:
+    client = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    client.settimeout(0.5)
+    client.connect(path)
+    client.sendall((json.dumps(event) + "\n").encode())
+    client.close()
+except OSError:
+    pass
+' "${1:-working}" "${2:-}"
+```
+
+Before wiring it into Claude Code, test the script and Brim directly:
+
+```sh
+mkdir -p "$HOME/.brim"
+# Save the script above as $HOME/.brim/claude-hook.sh.
+chmod +x "$HOME/.brim/claude-hook.sh"
+printf '%s' '{"session_id":"hook-test","cwd":"/tmp/demo","hook_event_name":"Notification"}' \
+  | "$HOME/.brim/claude-hook.sh" waiting "Waiting for input"
+```
+
+Hover the notch: a Claude Code row should say “Needs input” within a moment. If it does not, fix that before touching
+Claude Code's settings. Check that Agent Status is enabled, Brim is running, the socket exists, and this log shows the
+event:
+
+```sh
+log stream --level debug --predicate 'subsystem == "com.harshshelar.brim" AND category == "agent"'
+```
+
+Then add the hooks to `~/.claude/settings.json` (merge with your existing hooks; event names and matchers depend on your
+Claude Code version):
+
+```json
+{
+  "hooks": {
+    "SessionStart": [{"hooks": [{"type": "command", "command": "\"$HOME/.brim/claude-hook.sh\" working 'Session started'"}]}],
+    "PreToolUse": [{"matcher": "*", "hooks": [{"type": "command", "command": "\"$HOME/.brim/claude-hook.sh\" working 'Running a tool'"}]}],
+    "Notification": [{"matcher": "permission_prompt|idle_prompt|agent_needs_input", "hooks": [{"type": "command", "command": "\"$HOME/.brim/claude-hook.sh\" waiting 'Waiting for your input'"}]}],
+    "Stop": [{"hooks": [{"type": "command", "command": "\"$HOME/.brim/claude-hook.sh\" done 'Finished'"}]}],
+    "SessionEnd": [{"hooks": [{"type": "command", "command": "\"$HOME/.brim/claude-hook.sh\" done 'Session ended'"}]}]
+  }
+}
+```
+
+Use `"$HOME/..."` rather than a bare `~` so the command does not depend on shell tilde expansion. The `Notification`
+matcher keeps auth/quota notices from becoming a false “Needs input”; use `"matcher": ""` temporarily if you want to see
+every notification type.
+
+After saving, run `/hooks` in Claude Code to confirm the entries, then start a new session (hooks are read at session
+start). Use `claude --debug` (or `/debug` mid-session) to watch hook execution.
+
+To trigger the states in a real session:
+
+- **working** — start a session, then ask Claude to run a command or edit a file.
+- **waiting** — let Claude ask for permission. Switching away from the terminal while a permission prompt is open also
+  covers the `idle_prompt` case.
+- **done** — let the turn finish (the `Stop` hook) or exit the session (the `SessionEnd` hook).
+
+If Brim is not running when a hook fires, the socket event is lost; the URL variant below can launch Brim. Enable Agent
+Status before starting the Claude Code session you want to watch.
+
+The same contract works for Codex, Cursor, VS Code extensions or any script: one JSON object per line on the socket,
+or a `brim://agent` URL. The schema is `agent`, `session`, `status` (`working`/`waiting`/`done`/`error`), and optional
+`title`, `detail`, `costUSD`, `cwd`, `timestamp`.
 
 ## Notched vs non-notched geometry
 
@@ -125,3 +264,31 @@ Automation (only for Spotify or Music that is running). Declining must still lea
 - The panel stays near-black in light and dark mode on purpose; only the settings window follows the system appearance.
 - The adapter build needs CMake and network access on the first run. `BRIM_SKIP_MEDIA_ADAPTER=1 ./build.sh` produces an
   app without it; the rest of Brim works.
+
+## Known limitations and notes for M3
+
+- **Agent Status is local-only.** F7 has no network code and no quick prompt. Any future prompt/assistant feature needs
+  its own opt-in, provider choice, key storage and privacy documentation.
+- **The URL scheme is not authenticated.** Any app or script running as you can open `brim://agent?...`; the router
+  validates fields but treats the sender as trusted. The module must be enabled to accept events. Leave it off if you
+  do not want URLs to change the panel.
+- **The socket path is short on purpose.** Unix sockets have a ~104-byte path limit. The default
+  `~/Library/Application Support/Brim/agent.sock` fits a normal home directory; a very long username could exceed it,
+  in which case the log says the path is too long and the module shows no listener.
+- **Working and waiting sessions do not expire.** A crashed or abandoned agent can leave a row until you dismiss or
+  clear it. This avoids treating a long-running tool call as a failure, but it means the panel can retain a stale
+  working state.
+- **The roster is in memory.** Quitting Brim forgets sessions; the next event starts a new row. There is no event
+  history or transcript storage.
+- **One roster for all displays.** Panels on every screen show the same sessions; dismissing on one screen dismisses
+  everywhere.
+- **Disabled means dropped.** Events that arrive while Agent Status is off are ignored rather than buffered. Enable the
+  module before starting a hooked agent if you want its first events.
+- **The session cap is eight.** When more sessions arrive, the least urgent/oldest rows are dropped first. Increase
+  `AgentRoster.defaultMaxSessions` if that becomes limiting.
+- **Claude Code hooks are version-dependent.** The example uses `SessionStart`, `PreToolUse`, `Notification`, `Stop` and
+  `SessionEnd` and reads `session_id`/`cwd` from stdin. Check Claude Code's hook documentation if a payload or event name
+  changes; the Brim side only cares about the JSON line.
+- **No jump-to-terminal yet.** Rows carry `cwd` but there is no “open the project” action in F7.
+- The agent card scrolls when there are more rows than fit. Native scrollbars are hidden, so use the trackpad/wheel;
+  VoiceOver still reaches every row.

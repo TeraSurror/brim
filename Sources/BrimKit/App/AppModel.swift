@@ -14,6 +14,9 @@ public final class AppModel: ObservableObject {
             if settings.preferredPlayerBundleID != oldValue.preferredPlayerBundleID {
                 syncPreferredPlayer()
             }
+            if settings.agentFinishedRetentionMinutes != oldValue.agentFinishedRetentionMinutes {
+                syncAgentRetention()
+            }
         }
     }
 
@@ -51,6 +54,7 @@ public final class AppModel: ObservableObject {
         self.launchAtLogin = loginItems.isEnabled
         syncModules()
         syncPreferredPlayer()
+        syncAgentRetention()
         refreshAutomationStatus()
         if settings.launchAtLogin != launchAtLogin {
             settings.launchAtLogin = launchAtLogin
@@ -151,6 +155,31 @@ public final class AppModel: ObservableObject {
         let normalized = sourceID?.isEmpty == true ? nil : sourceID
         guard settings.preferredPlayerBundleID != normalized else { return }
         settings.preferredPlayerBundleID = normalized
+    }
+
+    // MARK: - Agents
+
+    /// The agent module is the only owner of the socket and the roster, so settings and diagnostics go
+    /// through this narrow surface instead of duplicating its state.
+    public var agentModule: (any AgentModuleControlling)? {
+        registry.allModules.compactMap { $0 as? AgentModuleControlling }.first
+    }
+
+    public var agentSocketPath: String {
+        agentModule?.socketPath ?? AgentSocketLocation.defaultPath
+    }
+
+    public func clearFinishedAgentSessions() {
+        agentModule?.clearFinished()
+    }
+
+    public func copyAgentSocketPath() {
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(agentSocketPath, forType: .string)
+    }
+
+    private func syncAgentRetention() {
+        agentModule?.applyRetention(minutes: settings.agentFinishedRetentionMinutes)
     }
 
     // MARK: - Permissions

@@ -4,16 +4,16 @@ This file is the handoff between sessions. Read it with `AGENTS.md` and the spec
 before ending a session.
 
 **Last updated:** 2026-10-25
-**Current milestone:** M2 — media controls, code complete; F6 manual sign-off pending
-**Next action:** run the M1 and M2 manual checks in [`TESTING.md`](TESTING.md) against real players. Then brainstorm M3
-(AI tools and IDE integration) before writing its acceptance criteria.
+**Current milestone:** M3 — agent status (F7), code complete; manual sign-off pending
+**Next action:** run the M1, M2 and M3 manual checks in [`TESTING.md`](TESTING.md). Then design the next M3 feature
+(quick prompt or send-to-assistant) before writing its acceptance criteria.
 
 ## How to resume
 
 1. Read `AGENTS.md`, then `Brim — macOS Notch Panel Spec.md`, then this file.
 2. `swift test` and `./build.sh && open build/Brim.app` to confirm the tree still builds.
-3. If M1 still has unchecked manual checks, do those first. Otherwise pick the next milestone.
-4. One feature at a time (F6, F7, …), one commit per feature.
+3. If M1/M2/M3 still have unchecked manual checks, do those first. Otherwise pick the next feature.
+4. One feature at a time (F8, F9, …), one commit per feature.
 5. Before ending a session: tick boxes here, add manual results to `docs/TESTING.md`, add an entry to **Session log**,
    and update `AGENTS.md` → **Current state** if the layout changed.
 
@@ -23,11 +23,37 @@ before ending a session.
 | --- | --- |
 | M1 — Notch panel shell | Code complete (F1–F5), 47 unit tests pass, manual visual sign-off pending |
 | M2 — Media controls | Code complete (F6), 100 unit tests pass, real-player and visual sign-off pending |
-| M3 — AI tools and IDE integration | Not started (needs brainstorming) |
+| M3 — AI tools and IDE integration | F7 (agent status) code complete; 157 unit tests pass; manual sign-off pending. Quick prompt and send-to-assistant are not designed |
 | Stretch goals | Not started |
 
 Test machine: macOS 26.6.2, Apple Silicon. Displays seen during development: primary 1920×1080 (no notch) and built-in
 1470×956 with a 179×32 notch. Minimum target remains macOS 14.
+
+## M3 — what exists
+
+F7 adds a local agent-status channel without touching the window shell or requiring a permission:
+
+```
+Sources/BrimKit/Model/AgentEvent.swift             status, validated event, session, wire JSON decoder
+Sources/BrimKit/State/AgentRoster.swift            pure aggregation, urgency order, retention, session cap
+Sources/BrimKit/Services/AgentSocketService.swift  POSIX Unix-socket listener, JSON lines, same-user check
+Sources/BrimKit/Services/AgentURLRouter.swift      pure brim://agent URL parser
+Sources/BrimKit/Modules/AgentModule.swift          listener lifecycle, roster, retention
+Sources/BrimKit/UI/AgentCompactView.swift          peek: status glyph, agent/headline, count
+Sources/BrimKit/UI/AgentExpandedView.swift         card: session rows, cost, elapsed, dismiss/clear
+```
+
+Changed: `Protocols` has `AgentEventListening`; `AppController` builds the module and routes URLs; `BrimApp` handles
+`application(_:open:)` and terminates the listener on quit; `AppModel` exposes the socket path/retention and clears
+finished sessions; `Settings` is schema 3 with `agentFinishedRetentionMinutes`; `SettingsStore` has the step;
+`Diagnostics` includes listener status and session counts; `SettingsView` has an Agents section; `Info.plist`
+registers the `brim` URL scheme; `Log` gains the `agent` category.
+
+Tests: `AgentEventTests`, `AgentRosterTests`, `AgentSocketServiceTests` (real temp socket, malformed/oversized input),
+`AgentURLRouterTests`, `AgentModuleTests`, plus schema-3 and AppModel retention/clear tests. 157 tests total.
+
+The Claude Code hook is documented in [`TESTING.md`](TESTING.md) and the README; the generic contract is any executable
+that writes one JSON object per line to the socket or opens a `brim://agent?...` URL.
 
 ## M2 — what exists
 
@@ -191,6 +217,33 @@ could not be automated are listed under **Manual sign-off still needed**.
   accessible. Unit tested.
 - [x] **Diagnostics** include helper availability, followed player and current track.
 
+## M3 F7 acceptance checklist
+
+- [x] **Event contract**: an integration reports `working`, `waiting`, `done` or `error`, with optional title, detail,
+  cost and working directory. `AgentEvent` trims/truncates text, rejects empty identities and invalid costs, and the
+  socket/URL decoders drop malformed input. Unit tested.
+- [x] **Transports**: JSON lines over `~/Library/Application Support/Brim/agent.sock` and `brim://agent?...` URLs both
+  reach the module. Verified against the running app with a Python socket client and `open -g`; the AX tree showed the
+  sessions.
+- [x] **Peek**: shows the most urgent state and hides when the roster is empty. Waiting sorts before failed, working and
+  done; the compact view names a single agent or counts several. Unit tested and seen in the running panel.
+- [x] **Expanded card**: lists agent, title, detail, elapsed time and cost; waiting rows are tinted and first; each row
+  has a dismiss button and finished rows can be cleared. Verified in the accessibility tree.
+- [x] **Retention**: done/failed sessions expire after the configured period (default 10 minutes); working/waiting
+  sessions are never auto-expired. Pruning happens on events and panel open, not on a timer. Unit tested.
+- [x] **Local-only transport**: the socket directory is `0700`, the socket is `0600`, `getpeereid` rejects other users,
+  and the file is removed when the module is disabled or Brim quits. Verified permissions and quit cleanup against the
+  app; malformed and oversized lines are covered by the real-socket tests.
+- [x] **URL handling**: works while Brim is running and when it is launched by the URL; `dismiss` and `clear` actions
+  update the roster. Verified with `open -g` in both states.
+- [x] **Lifecycle**: enabling the module starts the listener, disabling stops it and clears sessions; a launch with the
+  module already enabled starts the listener. Unit tested.
+- [x] **Settings schema 3**: retention round-trips, schema 2 files migrate without losing values, and the retention
+  value is clamped. Unit tested.
+- [x] **No permissions / no network**: the module declares no permissions, never prompts, and has no networking code.
+- [ ] **Manual visual sign-off**: light/dark mode, a long session list, and the card beside clock + media on the notched
+  display. See [`TESTING.md`](TESTING.md).
+
 ## Manual sign-off still needed
 
 These need a human at the screen; this environment could not take screenshots (no Screen Recording permission for the
@@ -207,6 +260,9 @@ agent process). Run through [`TESTING.md`](TESTING.md).
   installed on the development machine).
 - M2: the Automation prompt and its denied state against the real system dialogs.
 - M2: the expanded media card next to the clock at 600×320 on the notched MacBook, in light and dark mode.
+- M3: the Agent Status card beside clock and media, in light and dark mode, with enough sessions to scroll.
+- M3: the documented Claude Code hook with a real Claude Code session (permission prompt → waiting, stop → done).
+- M3: keyboard/VoiceOver use of the session dismiss and clear controls.
 
 ## Verification performed this session
 
@@ -247,6 +303,24 @@ agent process). Run through [`TESTING.md`](TESTING.md).
   after the panel closed and ~33 MB after 25 s, still 0.0% CPU. No helper process remained.
 - No permission prompt at launch; `log show` only records the module's Automation request when the module is enabled.
 
+### M3 F7 verification (2026-10-25)
+
+- `swift test` — 157 tests, 0 failures. New suites: agent event validation, roster ordering/retention, a real Unix-socket
+  listener (multiple lines, EOF without newline, malformed and oversized input, restart), URL parsing, module lifecycle,
+  schema 3 migration and AppModel retention/clear.
+- `BRIM_SKIP_MEDIA_ADAPTER=1 ./build.sh debug` — app bundle builds and signs with the `brim` URL scheme in its
+  `Info.plist`.
+- Running app with the module enabled: the socket existed at
+  `~/Library/Application Support/Brim/agent.sock` with mode `0600`; a Python Unix-socket client posted `working` and
+  `waiting` events and `log stream` showed both.
+- `open -g 'brim://agent?...'` delivered events to the running app, including after the app was already open. The URL
+  event appeared in the panel.
+- Hover + click on the 179×32 notch opened the panel; the accessibility tree showed `AGENTS`, `Needs input`, the session
+  title/detail/cost/elapsed text, and one dismiss button per row. Waiting rows sorted above working and done.
+- `brim://agent?action=dismiss...` removed one row; `action=clear` produced the “No agent activity” empty state.
+- Quitting Brim removed the socket file. Disabling the module is covered by unit tests and uses the same stop path.
+- The user's original schema-2 settings file was restored after the run.
+
 ## Decisions log
 
 | Date | Decision | Why |
@@ -276,6 +350,12 @@ agent process). Run through [`TESTING.md`](TESTING.md).
 | 2026-10-25 | Center one media group (artwork + metadata, progress, transport) in the card | The old Spacer left a large dead area and put the transport under the text column |
 | 2026-10-25 | Show “Playing in <app>” in the card and append the app to the peek subtitle | macOS only exposes the host app; the source was hidden when the half-width card collapsed the menu label |
 | 2026-10-25 | Stack the settings reorder chevrons in 20×14 frames | Side-by-side 9×5 borderless buttons were hard to hit and looked misaligned |
+| 2026-10-25 | Agent ingestion via a Unix socket plus `brim://agent`, not a localhost HTTP port | No TCP listener to authenticate or firewall; a URL is the simplest one-line hook, a socket handles frequent events |
+| 2026-10-25 | Keep agent aggregation in `State/AgentRoster` and prune only on events/panel open | Waiting/working state must not cost a timer while the notch is collapsed |
+| 2026-10-25 | Socket directory `0700`, socket `0600`, `getpeereid` same-user check | Agent events can include prompts and paths; another local user must not read or inject them |
+| 2026-10-25 | Never auto-expire working/waiting sessions | A long tool run that emits no event for a while is not a failure; the user can dismiss it |
+| 2026-10-25 | Agent Status is off by default, needs no permission and has no network code | Keeps the M1/M2 panel unchanged and preserves the no-prompt-at-launch rule |
+| 2026-10-25 | Schema 3 adds a 10-minute finished-session retention | The panel should clear old completions without user housekeeping, but failures stay visible long enough to notice |
 
 ## Session log
 
@@ -350,3 +430,21 @@ agent process). Run through [`TESTING.md`](TESTING.md).
 - Added an offscreen `ImageRenderer` harness (temporary, not committed) to inspect the black level and layout without
   Screen Recording permission.
 - Remaining for the user: a look at the real hover → peek → expanded → collapse sequence on the notched MacBook.
+
+### 2026-10-25 — M3 F7 agent status
+
+- Brainstormed M3 with the user and got approval for the first slice: local agent status over a Unix socket + `brim://`
+  URL, Claude Code as the reference integration, no network and no permissions.
+- Implemented `AgentEvent`/`AgentSession`, the pure `AgentRoster` (urgency order, stale-event guard, retention, 8-session
+  cap), the POSIX `AgentSocketService` (line framing, 8 KB limit, `0600` socket, same-user check), the pure
+  `AgentURLRouter`, and `AgentModule`.
+- Added the peek and card views, the Agents settings section (socket path/copy, retention, clear finished), schema 3,
+  diagnostics, the URL scheme and quit cleanup.
+- Found and fixed a test-only main-actor deadlock: an 8 KB write from the test blocked the same actor that had to drain
+  the socket. Test writes now run off the main actor.
+- Found the system temp directory is longer than the ~104-byte Unix-socket limit; socket tests use `/tmp` with a short
+  UUID prefix.
+- Verified against the running app: socket mode, socket and URL events, AX tree rows/order/cost/elapsed, dismiss/clear,
+  and socket removal on quit. Restored the user's settings afterwards.
+- 157 tests pass. Remaining: manual visual/VoiceOver sign-off and a real Claude Code hook run; F8+ are not designed.
+- Committed as `F7 agent status; local socket and brim:// ingestion` on 2026-10-25.

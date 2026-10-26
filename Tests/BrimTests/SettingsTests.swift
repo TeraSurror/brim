@@ -26,6 +26,7 @@ final class SettingsTests: XCTestCase {
         settings.enabledModules = ["clock", "media"]
         settings.showOnNonNotchedDisplays = false
         settings.preferredPlayerBundleID = "com.spotify.client"
+        settings.agentFinishedRetentionMinutes = 30
 
         store.save(settings)
         XCTAssertEqual(store.load(), settings)
@@ -53,6 +54,33 @@ final class SettingsTests: XCTestCase {
         XCTAssertEqual(settings.hoverDelay, 0.25)
         XCTAssertFalse(settings.showOnNonNotchedDisplays)
         XCTAssertNil(settings.preferredPlayerBundleID)
+        XCTAssertEqual(settings.agentFinishedRetentionMinutes, Settings().agentFinishedRetentionMinutes)
+    }
+
+    func testSchemaTwoFileMigratesToTheCurrentSchema() throws {
+        let data = Data(
+            #"{"schemaVersion":2,"hoverDelay":0.3,"preferredPlayerBundleID":"com.spotify.client"}"#
+                .utf8
+        )
+        let settings = try SettingsMigrator.migrate(data)
+
+        XCTAssertEqual(settings.schemaVersion, Settings.currentSchemaVersion)
+        XCTAssertEqual(settings.hoverDelay, 0.3)
+        XCTAssertEqual(settings.preferredPlayerBundleID, "com.spotify.client")
+        XCTAssertEqual(settings.agentFinishedRetentionMinutes, 10)
+    }
+
+    func testAgentRetentionIsClampedToItsRange() throws {
+        XCTAssertEqual(
+            try SettingsMigrator.migrate(Data(#"{"agentFinishedRetentionMinutes": 999}"#.utf8))
+                .agentFinishedRetentionMinutes,
+            Settings.agentRetentionRange.upperBound
+        )
+        XCTAssertEqual(
+            try SettingsMigrator.migrate(Data(#"{"agentFinishedRetentionMinutes": 0}"#.utf8))
+                .agentFinishedRetentionMinutes,
+            Settings.agentRetentionRange.lowerBound
+        )
     }
 
     func testDelaysAreClampedToTheirRanges() throws {

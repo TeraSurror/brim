@@ -8,6 +8,12 @@ struct MediaDiagnostics {
     let track: String?
 }
 
+struct AgentDiagnostics {
+    let socketPath: String
+    let listening: Bool
+    let summary: AgentSummary
+}
+
 @MainActor
 enum Diagnostics {
     static var appVersion: String {
@@ -20,7 +26,8 @@ enum Diagnostics {
     static func report(
         settings: Settings,
         screens: ScreenProviding,
-        media: MediaDiagnostics? = nil
+        media: MediaDiagnostics? = nil,
+        agents: AgentDiagnostics? = nil
     ) -> String {
         var lines = [
             "Brim \(appVersion)",
@@ -44,6 +51,15 @@ enum Diagnostics {
             lines.append("  helper: bundled \(media.helperBundled), available \(media.helperAvailable)")
             lines.append("  following: \(media.followedPlayer ?? "Automatic (macOS)")")
             lines.append("  now playing: \(media.track ?? "nothing")")
+        }
+
+        if let agents {
+            lines += ["", "Agents:"]
+            lines.append("  socket: \(agents.socketPath) (\(agents.listening ? "listening" : "stopped"))")
+            lines.append(
+                "  sessions: \(agents.summary.waiting) waiting, \(agents.summary.working) working, "
+                    + "\(agents.summary.errors) failed, \(agents.summary.done) done"
+            )
         }
 
         let encoder = JSONEncoder()

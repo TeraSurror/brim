@@ -14,6 +14,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
+    /// Registered `brim://agent` URLs land here, both when Brim is already running and when a hook
+    /// launches it. The controller validates the URL before it reaches the agent module.
+    func application(_ application: NSApplication, open urls: [URL]) {
+        MainActor.assumeIsolated {
+            for url in urls {
+                AppEnvironment.shared.controller.handle(url)
+            }
+        }
+    }
+
+    func applicationWillTerminate(_ notification: Notification) {
+        MainActor.assumeIsolated {
+            AppEnvironment.shared.controller.stop()
+        }
+    }
+
     /// An agent app shows no menu bar of its own, but its windows still need the standard key equivalents
     /// (copy, paste, close, quit) and those come from the main menu.
     private func makeMainMenu() -> NSMenu {

@@ -10,6 +10,7 @@ public final class AppController {
     private let scheduler: Scheduling
     private let monitor: PointerMonitoring
     private let coordinator: NowPlayingCoordinator
+    private let agent: AgentModule
     private let windows = WindowPresenter()
     private var windowManager: NotchWindowManager?
     private var cancellables = Set<AnyCancellable>()
@@ -24,10 +25,11 @@ public final class AppController {
             scheduler: scheduler
         )
         let media = MediaModule(service: coordinator, scheduler: scheduler)
+        let agent = AgentModule()
         let model = AppModel(
             store: JSONSettingsStore(),
             loginItems: SMLoginItemService(),
-            registry: ModuleRegistry(modules: [ClockModule(), media]),
+            registry: ModuleRegistry(modules: [ClockModule(), media, agent]),
             permissions: SystemPermissionService()
         )
         // The panel's source menu writes through settings so the choice survives a restart.
@@ -37,6 +39,7 @@ public final class AppController {
 
         self.model = model
         self.coordinator = coordinator
+        self.agent = agent
         self.screens = NSScreenProvider()
         self.scheduler = scheduler
         self.monitor = NSEventPointerMonitor()
@@ -60,6 +63,11 @@ public final class AppController {
                     helperAvailable: self.coordinator.isAvailable,
                     followedPlayer: self.model.settings.preferredPlayerBundleID,
                     track: track
+                ),
+                agents: AgentDiagnostics(
+                    socketPath: self.agent.socketPath,
+                    listening: self.agent.isListening,
+                    summary: self.agent.summary
                 )
             )
         }
@@ -83,5 +91,20 @@ public final class AppController {
 
     public func openSettings() {
         windows.showSettings(model: model)
+    }
+
+    /// `brim://agent` URLs arrive from the app delegate. The router accepts only the documented fields, so
+    /// a link from another app cannot inject malformed state.
+    public func handle(_ url: URL) {
+        guard let command = AgentURLRouter.command(from: url) else {
+            Log.agent.error("Ignored an agent URL: \(url.absoluteString, privacy: .public)")
+            return
+        }
+        agent.handle(command)
+    }
+
+    /// Cleans up the agent socket on quit; the listener is otherwise stopped when the module is disabled.
+    public func stop() {
+        agent.setEnabled(false)
     }
 }

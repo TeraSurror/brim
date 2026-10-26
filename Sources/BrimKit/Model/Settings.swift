@@ -2,9 +2,10 @@ import Foundation
 
 /// Persisted user settings. Custom decoding keeps old files loadable after a schema bump.
 public struct Settings: Codable, Equatable, Sendable {
-    public static let currentSchemaVersion = 2
+    public static let currentSchemaVersion = 3
     public static let hoverDelayRange: ClosedRange<Double> = 0.05...1.5
     public static let collapseDelayRange: ClosedRange<Double> = 0.1...2.0
+    public static let agentRetentionRange: ClosedRange<Double> = 1...120
     public static let defaultEnabledModules = ["clock"]
 
     public var schemaVersion: Int = Settings.currentSchemaVersion
@@ -21,6 +22,8 @@ public struct Settings: Codable, Equatable, Sendable {
     /// Bundle identifier of the player to follow, or nil for whatever macOS reports. Choosing Spotify or
     /// Music enables the optional Apple Events path; the adapter alone needs no setting.
     public var preferredPlayerBundleID: String?
+    /// Minutes a done or failed agent session stays in the panel before it is pruned.
+    public var agentFinishedRetentionMinutes: Double = 10
 
     public init() {}
 
@@ -39,5 +42,10 @@ public struct Settings: Codable, Equatable, Sendable {
         showOnNonNotchedDisplays = try container.decodeIfPresent(Bool.self, forKey: .showOnNonNotchedDisplays)
             ?? defaults.showOnNonNotchedDisplays
         preferredPlayerBundleID = try container.decodeIfPresent(String.self, forKey: .preferredPlayerBundleID)
+        let retention = try container.decodeIfPresent(Double.self, forKey: .agentFinishedRetentionMinutes)
+            ?? defaults.agentFinishedRetentionMinutes
+        agentFinishedRetentionMinutes = retention.isFinite
+            ? min(max(retention, Self.agentRetentionRange.lowerBound), Self.agentRetentionRange.upperBound)
+            : defaults.agentFinishedRetentionMinutes
     }
 }

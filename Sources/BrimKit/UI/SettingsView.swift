@@ -108,6 +108,57 @@ private struct GeneralSettingsTab: View {
             }
 
             Section {
+                LabeledContent("Event socket") {
+                    HStack(spacing: 6) {
+                        Text(model.agentSocketPath)
+                            .font(.system(size: 10, design: .monospaced))
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                            .truncationMode(.middle)
+                            .textSelection(.enabled)
+                            .frame(maxWidth: 260, alignment: .trailing)
+                        Button {
+                            model.copyAgentSocketPath()
+                        } label: {
+                            Image(systemName: "doc.on.doc")
+                        }
+                        .buttonStyle(.borderless)
+                        .help("Copy the agent socket path")
+                        .accessibilityLabel("Copy agent socket path")
+                    }
+                }
+
+                Picker("Keep finished sessions", selection: $model.settings.agentFinishedRetentionMinutes) {
+                    Text("1 minute").tag(1.0)
+                    Text("5 minutes").tag(5.0)
+                    Text("10 minutes").tag(10.0)
+                    Text("15 minutes").tag(15.0)
+                    Text("30 minutes").tag(30.0)
+                    Text("1 hour").tag(60.0)
+                    Text("2 hours").tag(120.0)
+                }
+                .accessibilityLabel("Keep finished agent sessions")
+
+                HStack(spacing: 8) {
+                    Text("Finished and failed sessions clear automatically; working ones stay until they report again.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Spacer(minLength: 8)
+                    Button("Clear finished") {
+                        model.clearFinishedAgentSessions()
+                    }
+                    .accessibilityLabel("Clear finished agent sessions")
+                }
+            } header: {
+                Text("Agents")
+            } footer: {
+                Text("Enable the Agent Status module in Modules to listen. Tools post local events to this socket or a brim://agent URL; nothing leaves the Mac.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            Section {
                 Toggle(
                     "Launch at login",
                     isOn: Binding(

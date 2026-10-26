@@ -24,5 +24,16 @@
     <string>Brim uses Automation to read and control Spotify and Music when you choose one of them as the player to follow. Brim works without this permission.</string>
     <key>NSHighResolutionCapable</key>
     <true/>
+    <key>CFBundleURLTypes</key>
+    <array>
+        <dict>
+            <key>CFBundleURLName</key>
+            <string>com.harshshelar.brim.agent</string>
+            <key>CFBundleURLSchemes</key>
+            <array>
+                <string>brim</string>
+            </array>
+        </dict>
+    </array>
 </dict>
 </plist>

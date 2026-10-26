@@ -135,13 +135,32 @@ Prototype option 1; fall back to option 2 if it breaks.
 - [ ] When nothing is playing, the module hides or shows a quiet empty state.
 - [ ] If two apps are playing, the user can pick which one Brim follows.
 
-## Milestone 3: AI tools and IDE integration (to brainstorm)
+## Milestone 3: AI tools and IDE integration
 
-Wanted: integrations with AI assistants and coding tools (Claude, Gemini, ChatGPT, Codex, Cursor, VS Code). How this works is not decided; brainstorm before writing acceptance criteria. Seed ideas:
+M3 starts with local agent status. Quick prompt and send-to-assistant are later features: they need network access and
+additional permissions, so they get their own acceptance criteria before implementation.
 
-- **Agent status in the notch.** Claude Code hooks, Codex or Cursor post events to a local socket or `brim://` URL scheme: "waiting for permission", "task done", a running cost.
-- **Quick prompt.** A text box in the expanded panel that sends a prompt to a chosen assistant.
+**F7. Agent status**
+
+Coding tools report what they are doing to Brim over a local Unix socket or a `brim://agent` URL. Every integration is
+still a `BrimModule`; this first one needs no permission and no network.
+
+- [ ] A tool can report `working`, `waiting`, `done` or `error` for a session, with an optional title, detail, cost and working directory.
+- [ ] The peek shows the most urgent state (waiting, then failed, then working, then done) and hides when there is no activity.
+- [ ] The expanded panel lists sessions with agent, title, detail, elapsed time and cost; waiting sessions come first and can be dismissed.
+- [ ] Finished and failed sessions expire after the configured retention (default 10 minutes); working and waiting sessions stay until they report again or are cleared.
+- [ ] The transport is local only: the socket lives in Application Support with `0600` permissions, accepts only the current user, and is removed when the module is disabled or Brim quits. Malformed, oversized and stale events are ignored.
+- [ ] `brim://agent` works while Brim is running and launches it when it is not. The URL parser accepts only the documented fields.
+- [ ] Enabling Agent Status starts the listener; disabling it stops the listener and clears the roster. No permission prompt appears at launch or when the module is enabled.
+- [ ] Settings schema 3 stores the retention period and migrates schema 2 files without losing values.
+- [ ] Claude Code is documented as the reference integration; the same contract works for Codex, Cursor, VS Code and any tool that can write one JSON line or open a URL.
+
+**Later M3 features (not designed yet)**
+
+- **Quick prompt.** A text box in the expanded panel that sends a prompt to a chosen assistant. Needs per-provider
+  network access, API keys in the Keychain and an explicit opt-in flow.
 - **Send to assistant.** Drop a file on the notch, or send the current selection or a screenshot, to an assistant.
+  Needs drag/drop plus Screen Recording or Accessibility permissions depending on the source.
 
 Each integration ships as a `BrimModule`.
 

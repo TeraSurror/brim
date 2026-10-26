@@ -6,12 +6,13 @@ panel. The source of truth for features and acceptance criteria is
 
 ## Current state
 
-M1 and M2 are implemented: the notch panel shell (F1–F5), the clock and Now Playing modules, settings schema 2, the
-per-screen window manager, and the bundled MediaRemote helper (built from a pinned third-party source). 100 unit tests
-pass. [`docs/PROGRESS.md`](docs/PROGRESS.md) is the handoff between sessions — read it after the spec. Visual sign-off
-for M1 and the real-player/two-player sign-off for M2 are still pending; the checklist is
-[`docs/TESTING.md`](docs/TESTING.md). M3 (AI tools and IDE integration) has not been designed; brainstorm with the user
-before writing acceptance criteria.
+M1, M2 and M3 F7 are implemented: the notch panel shell (F1–F5), the clock and Now Playing modules, agent status over a
+local Unix socket and `brim://` URL (F7), settings schema 3, the per-screen window manager, and the bundled MediaRemote
+helper (built from a pinned third-party source). 157 unit tests pass. [`docs/PROGRESS.md`](docs/PROGRESS.md) is the
+handoff between sessions — read it after the spec. Visual sign-off for M1, the real-player/two-player sign-off for M2
+and the real-Claude-Code-hook/visual sign-off for F7 are still pending; the checklist is
+[`docs/TESTING.md`](docs/TESTING.md). The next M3 features (quick prompt, send-to-assistant) are not designed; brainstorm
+with the user before writing acceptance criteria.
 
 Brim copies its project layout from its sibling app **Speakeasy** (`../speakeasy`, a menu bar manager), which is further
 along (M1 and M2 shipped). When this file says "as in Speakeasy", open the named Speakeasy file and copy its pattern.
@@ -40,13 +41,13 @@ brim/
 │   └── BrimKit/
 │       ├── App/                       # composition root: launcher, AppDelegate, AppController, AppModel, WindowPresenter
 │       ├── Window/                    # NotchWindow (NSPanel), per-screen window manager, pointer tracking
-│       ├── State/                     # hover/expand state machine, timers. Pure logic, no AppKit
-│       ├── Modules/                   # BrimModule protocol, module registry, implementations (Clock, Media, …)
+│       ├── State/                     # hover/expand state machine, timers, agent roster. Pure logic, no AppKit
+│       ├── Modules/                   # BrimModule protocol, module registry, implementations (Clock, Media, Agent…)
 │       ├── Services/                  # Protocols.swift + real implementations (screens, now playing, login item,
-│       │                              #   settings, MediaRemote helper, Spotify/Music Apple Events)
-│       ├── Model/                     # value types: ScreenInfo, PanelState, NowPlaying, Settings
+│       │                              #   settings, MediaRemote helper, Spotify/Music Apple Events, agent socket/URL)
+│       ├── Model/                     # value types: ScreenInfo, PanelState, NowPlaying, AgentEvent, Settings
 │       ├── Support/                   # Log.swift (os.Logger categories), Diagnostics.swift
-│       └── UI/                        # SwiftUI panel views, media card and settings. Never touches NSPanel
+│       └── UI/                        # SwiftUI panel views, media/agent cards and settings. Never touches NSPanel
 ├── Tests/
 │   └── BrimTests/
 │       ├── Fakes.swift                # every fake in one file
@@ -79,7 +80,7 @@ come from Speakeasy and hold the composition root, plain data types and logging.
 | `Services/Protocols.swift` | `Services/Protocols.swift` | Every system-facing protocol in one file, plus `TaskHandle` and `Scheduling` |
 | `Services/SettingsStore.swift` | `Services/SettingsStore.swift` | `SettingsMigrator` (step per version) + `JSONSettingsStore` in `~/Library/Application Support/Brim/settings.json`. Corrupt files are moved aside, not deleted |
 | `Services/LoginItemService.swift` | `Services/LoginItemService.swift` | `SMAppService.mainApp` behind `LoginItemControlling` |
-| `Support/Log.swift` | `Support/Log.swift` | `enum Log` with subsystem `com.harshshelar.brim` and categories `general`, `window`, `state`, `media`, `settings` |
+| `Support/Log.swift` | `Support/Log.swift` | `enum Log` with subsystem `com.harshshelar.brim` and categories `general`, `window`, `state`, `media`, `settings`, `agent` |
 | `Support/Diagnostics.swift` | `Support/Diagnostics.swift` | Text report for the "Copy diagnostics" button: version, macOS, screens + notch rects, settings JSON |
 | `Tests/SpeakeasyTests/Fakes.swift` | `Tests/BrimTests/Fakes.swift` | `FakeScheduler` (a fake clock with `advance(by:)`), `FakeScreens`, plus Brim's own (`FakeNowPlaying`, …) |
 | `docs/TESTING.md` | `docs/TESTING.md` | A table per milestone, one row per feature (F1, F2, …) |
@@ -95,21 +96,27 @@ These come from the spec's "Instructions for the coding agent" and Speakeasy's c
 3. **`State/` is pure logic.** No AppKit imports. Time comes from an injected `Scheduling`, so tests drive it with
    `FakeScheduler`.
 4. **Every system API sits behind a protocol** in `Services/Protocols.swift` (screens, pointer events, now playing,
-   login item, settings persistence, permissions). Each has one real implementation and one fake in
+   login item, settings persistence, permissions, agent event listening). Each has one real implementation and one fake in
    `Tests/BrimTests/Fakes.swift`.
 5. **Features are `BrimModule`s.** New functionality (media, calendar, AI tools) goes in `Modules/` and plugs into the
    module host without changes to the window shell.
 6. **No permission requests at launch.** A module asks for its permission only when the user enables it, after an
    in-app explanation, and keeps working (degraded) when permission is denied.
-7. **No network access in M1 or M2.** No analytics, ever.
+7. **No network access in M1 or M2.** Agent status (M3 F7) is local-only as well. No analytics, ever. Any later network
+   use (quick prompt) is per module, opt-in, and documented.
 8. **No third-party dependencies** without asking the user first. The one approved exception is the build-time MediaRemote helper (BSD-3, pinned by tag and SHA, never linked or committed).
 9. **Idle cost is near zero:** under 0.5% CPU and under 80 MB memory. Prefer notifications to polling, and never poll
-   faster than once a second while collapsed. Monitors (pointer, now playing) run only while someone needs them.
+   faster than once a second while collapsed. Monitors (pointer, now playing) run only while someone needs them. The
+   agent socket is one file descriptor while its module is enabled; its roster prunes on events/panel open, not a timer.
 10. **Media stays behind `NowPlayingProviding`.** The MediaRemote helper is a child process loaded by Perl, never
     linked into Brim. The stream runs only between the first peek and the end of the collapse animation (plus a one
     second grace), and is wrapped in a supervisor that watches Brim's PID so it cannot outlive the app.
 11. **Player control is optional.** The helper needs no permission. Following Spotify or Music directly is an
     Automation feature requested through the module's explanation flow; denial must leave the adapter path working.
+12. **Agent events stay local.** The Unix socket lives in Application Support with a `0700` directory and `0600` file,
+    rejects other users with `getpeereid`, and is removed when the module is disabled or Brim quits. `brim://agent`
+    input is validated as untrusted; never execute a field from it. Enabling Agent Status is the only switch that
+    starts the listener — no permission prompt is involved.
 
 ## Code conventions (as in Speakeasy)
 
@@ -146,7 +153,8 @@ open build/Brim.app
 ## Testing expectations
 
 - Unit test: the hover/expand state machine (fake clock), screen and notch geometry (recorded `ScreenInfo` values), the
-  module registry, settings migrations, and the media module against a fake `NowPlayingService`.
+  module registry, settings migrations, the media module against a fake `NowPlayingService`, and agent event validation,
+  roster ordering/retention, the socket listener against a real temp socket, and URL parsing.
 - Each test file covers one unit, is a `@MainActor final class …Tests: XCTestCase` and builds its fakes in `setUp`.
 - After each feature, add a row to `docs/TESTING.md` that maps manual checks to that feature's acceptance criteria:
   notched MacBook, with and without an external display, light and dark mode, over a full-screen app. Check idle CPU in

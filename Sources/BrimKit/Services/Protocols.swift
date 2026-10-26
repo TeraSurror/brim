@@ -49,3 +49,14 @@ public protocol PermissionRequesting {
     @MainActor func status(for kind: PermissionKind) -> PermissionStatus
     @MainActor func request(_ kind: PermissionKind) async -> PermissionStatus
 }
+
+/// Local agent events, delivered over a Unix socket. The listener starts only while the agent module is
+/// enabled; `onEvent` is called on the main actor with input that has already been validated.
+@MainActor
+public protocol AgentEventListening: AnyObject {
+    var socketPath: String { get }
+    var isListening: Bool { get }
+    var onEvent: ((AgentEvent) -> Void)? { get set }
+    func start()
+    func stop()
+}

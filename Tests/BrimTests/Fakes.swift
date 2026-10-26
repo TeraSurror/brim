@@ -245,3 +245,59 @@ final class FakeMediaControllingModule: BrimModule, MediaModuleControlling {
     func compactView() -> AnyView { AnyView(EmptyView()) }
     func expandedView() -> AnyView { AnyView(EmptyView()) }
 }
+
+@MainActor
+final class FakeAgentListener: AgentEventListening {
+    let socketPath: String
+    private(set) var isListening = false
+    var onEvent: ((AgentEvent) -> Void)?
+    private(set) var startCount = 0
+    private(set) var stopCount = 0
+
+    init(socketPath: String = "/tmp/brim-agent-test.sock") {
+        self.socketPath = socketPath
+    }
+
+    func start() {
+        startCount += 1
+        isListening = true
+    }
+
+    func stop() {
+        stopCount += 1
+        isListening = false
+    }
+
+    func emit(_ event: AgentEvent) {
+        onEvent?(event)
+    }
+}
+
+@MainActor
+final class FakeAgentControllingModule: BrimModule, AgentModuleControlling {
+    let id = "agents"
+    let title = "Agent Status"
+    let symbolName = "sparkles"
+    let requiredPermissions: [PermissionKind] = []
+    let permissionExplanation = ""
+    let socketPath = "/tmp/brim-agent-test.sock"
+    var isListening = false
+    var sessionCount = 0
+    var finishedCount = 0
+    private(set) var isEnabled = false
+    private(set) var appliedRetention: [Double] = []
+    private(set) var clearFinishedCount = 0
+
+    func setEnabled(_ enabled: Bool) { isEnabled = enabled }
+
+    func applyRetention(minutes: Double) {
+        appliedRetention.append(minutes)
+    }
+
+    func clearFinished() {
+        clearFinishedCount += 1
+    }
+
+    func compactView() -> AnyView { AnyView(EmptyView()) }
+    func expandedView() -> AnyView { AnyView(EmptyView()) }
+}

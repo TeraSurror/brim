@@ -7,18 +7,20 @@ built to host pluggable modules; media controls are the first real one.
 - **Notch window** that never takes focus, follows every Space, and works over full-screen apps
 - **Peek → expand → collapse** driven by a small, unit-tested state machine
 - **One panel per screen**, including a slim handle on displays without a notch
-- **Module host** with clock and Now Playing modules; AI tools plug in without touching the window shell
+- **Module host** with clock, Now Playing and Agent Status modules; AI tools plug in without touching the window shell
 - **Media controls**: artwork in the peek, then a full card with title, artist, progress, seek and transport buttons
   for anything macOS reports (Spotify, Music, Safari/YouTube, …), with optional direct Spotify/Music control
+- **Agent status**: local Claude Code/Codex/Cursor/VS Code events over a Unix socket or `brim://` URL, with waiting,
+  working, done and failed rows in the panel
 - **Works with no media**: the module disappears from the peek and shows a quiet empty state in the panel
 - **Settings** for hover/collapse timing, launch at login, modules and multi-display behaviour
-- **No network access, no analytics, no menu bar icon**
+- **No network access, no analytics, no menu bar icon** (M1/M2; Agent Status is local-only)
 
 ## Status
 
-M1 (notch panel shell) and M2 (media controls) are implemented and unit tested. Real-player, two-player and visual
-sign-off still need a person at the screen. See [`docs/PROGRESS.md`](docs/PROGRESS.md) for what is verified and the next
-session's starting point; the checklists are in [`docs/TESTING.md`](docs/TESTING.md).
+M1 (notch panel shell), M2 (media controls) and M3 F7 (agent status) are implemented and unit tested. Real-player,
+real-Claude-Code-hook and visual sign-off still need a person at the screen. See [`docs/PROGRESS.md`](docs/PROGRESS.md)
+for what is verified and the next session's starting point; the checklists are in [`docs/TESTING.md`](docs/TESTING.md).
 
 ## Documentation
 
@@ -47,16 +49,44 @@ Settings and Quit; ⌘, also opens Settings while a Brim window is focused.
 Bundle ID: `com.harshshelar.brim`. Settings live in
 `~/Library/Application Support/Brim/settings.json` (versioned JSON; corrupt files are moved aside, not deleted).
 
+## Agent status (M3 F7)
+
+Agent Status is off by default. Turn it on in **Settings → Modules → Agent Status**; no permission prompt appears. It
+starts a local Unix socket at `~/Library/Application Support/Brim/agent.sock` (`0600`, removed on quit) and accepts
+`brim://agent` URLs. Nothing leaves the Mac.
+
+A tool reports one JSON object per line:
+
+```sh
+printf '%s\n' '{"agent":"claude-code","session":"demo","status":"working","title":"Fix the parser","detail":"Running tests"}' \
+  | nc -U "$HOME/Library/Application Support/Brim/agent.sock"
+```
+
+or opens the equivalent URL:
+
+```sh
+open -g 'brim://agent?agent=claude-code&session=demo&status=waiting&title=Approve%20a%20tool%20call'
+```
+
+Statuses are `working`, `waiting`, `done` and `error`; `title`, `detail`, `costUSD`, `cwd` and `timestamp` are
+optional. `action=dismiss&agent=…&session=…` removes one row and `action=clear` clears the roster. The panel sorts
+waiting first, then failures, working and done.
+
+Claude Code is the reference integration: [`docs/TESTING.md`](docs/TESTING.md) has a ready-to-save
+`~/.brim/claude-hook.sh` and the `~/.claude/settings.json` hooks. Codex, Cursor, VS Code extensions and plain scripts
+use the same contract.
+
 ## Code layout
 
 - `Sources/BrimKit/Window/`: all AppKit panel code (`NSPanel`, frames, pointer tracking, per-screen manager)
-- `Sources/BrimKit/State/`: pure hover/expand geometry and state machine, driven by an injected scheduler
-- `Sources/BrimKit/Modules/`: `BrimModule`, registry, the clock module and the Now Playing module
+- `Sources/BrimKit/State/`: pure hover/expand geometry, the state machine and the agent roster, driven by an injected
+  scheduler/clock
+- `Sources/BrimKit/Modules/`: `BrimModule`, registry, the clock, Now Playing and Agent Status modules
 - `Sources/BrimKit/Services/`: protocols plus real implementations (screens, login item, settings, permissions,
-  MediaRemote helper process, Spotify/Music Apple Events, now-playing coordinator)
-- `Sources/BrimKit/Model/`: `ScreenInfo`, `PanelState`, `NowPlaying`, `Settings`, permissions
+  MediaRemote helper process, Spotify/Music Apple Events, now-playing coordinator, agent Unix socket and URL router)
+- `Sources/BrimKit/Model/`: `ScreenInfo`, `PanelState`, `NowPlaying`, `AgentEvent`, `Settings`, permissions
 - `scripts/build-media-adapter.sh`: builds the pinned third-party helper into `.build/media-adapter`
-- `Sources/BrimKit/UI/`: SwiftUI panel, media card and settings views; no `NSPanel` or `NSScreen` access
+- `Sources/BrimKit/UI/`: SwiftUI panel, media/agent cards and settings views; no `NSPanel` or `NSScreen` access
 - `Sources/BrimKit/App/`: composition root, app delegate, settings window, shared model
 - `Tests/BrimTests/`: fakes and unit tests
 - `docs/`: progress, manual testing
@@ -83,6 +113,23 @@ Architecture rules and conventions are in [`AGENTS.md`](AGENTS.md). In short: on
   printed in [`docs/TESTING.md`](docs/TESTING.md). A future macOS release can close the Perl/MediaRemote route.
 - `swift run` does not have the bundle resources; point `BRIM_MEDIA_ADAPTER_PATH` at `.build/media-adapter` (or use
   `./build.sh`).
+
+### Agent status does not appear
+
+- Turn the module on: **Settings → Modules → Agent Status**. It is off by default.
+- Check the listener and permissions:
+  ```sh
+  ls -l "$HOME/Library/Application Support/Brim/agent.sock"
+  log stream --level debug --predicate 'subsystem == "com.harshshelar.brim" AND category == "agent"'
+  ```
+- Send a test event with the `nc -U` line in [Agent status](#agent-status-m3-f7). If the module is disabled, events are
+  dropped rather than buffered.
+- `brim://` URLs need the app bundle registered. Launch `build/Brim.app` once; then `open -g 'brim://agent?...'` should
+  reach the running app. Percent-encode spaces in `title`/`detail`.
+- A Unix socket path has a ~104-byte limit. A very long home directory can exceed it; the log reports “path is too
+  long” and the module has no listener. Move the home directory or shorten the path if this happens.
+- If an agent crashed, its working/waiting row stays until you dismiss it or press Clear; working sessions do not
+  expire automatically.
 
 ### Automation was denied or keeps asking
 

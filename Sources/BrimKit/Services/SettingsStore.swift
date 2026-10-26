@@ -7,6 +7,7 @@ public enum SettingsMigrator {
     static let steps: [Int: (inout [String: Any]) -> Void] = [
         0: { _ in }, // pre-versioned files only gain the schemaVersion key
         1: { _ in }, // schema 2 adds preferredPlayerBundleID; nil is the automatic default
+        2: { _ in }, // schema 3 adds agent retention; the 10-minute default is applied by decoding
     ]
 
     public static func migrate(_ data: Data) throws -> Settings {

@@ -8,6 +8,7 @@ final class AppModelTests: XCTestCase {
     private var permissions: FakePermissions!
     private var clock: FakeModule!
     private var media: FakeModule!
+    private var agent: FakeAgentControllingModule!
     private var model: AppModel!
 
     override func setUp() async throws {
@@ -18,7 +19,8 @@ final class AppModelTests: XCTestCase {
         permissions = FakePermissions()
         clock = FakeModule(id: "clock", permissions: [])
         media = FakeModule(id: "media", permissions: [.automation], explanation: "Brim needs to talk to Music and Spotify.")
-        let registry = ModuleRegistry(modules: [clock, media])
+        agent = FakeAgentControllingModule()
+        let registry = ModuleRegistry(modules: [clock, media, agent])
         model = AppModel(
             store: store,
             loginItems: loginItems,
@@ -29,7 +31,23 @@ final class AppModelTests: XCTestCase {
 
     func testEnabledModulesAreActiveAtLaunch() {
         XCTAssertEqual(model.activeModules.map(\.id), ["clock"])
-        XCTAssertEqual(model.disabledModules.map(\.id), ["media"])
+        XCTAssertEqual(model.disabledModules.map(\.id), ["media", "agents"])
+    }
+
+    func testAgentRetentionIsAppliedAtLaunchAndOnChange() {
+        XCTAssertEqual(agent.appliedRetention, [Settings().agentFinishedRetentionMinutes])
+
+        model.settings.agentFinishedRetentionMinutes = 30
+
+        XCTAssertEqual(agent.appliedRetention, [Settings().agentFinishedRetentionMinutes, 30])
+    }
+
+    func testAgentSocketPathAndClearFinishedGoThroughTheModule() {
+        XCTAssertEqual(model.agentSocketPath, agent.socketPath)
+
+        model.clearFinishedAgentSessions()
+
+        XCTAssertEqual(agent.clearFinishedCount, 1)
     }
 
     func testLaunchStateComesFromTheSystemAndIsWrittenBack() {
