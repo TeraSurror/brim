@@ -22,6 +22,33 @@ final class AgentEventTests: XCTestCase {
         XCTAssertEqual(event.cwd, "/tmp/project")
     }
 
+    func testAppMustLookLikeABundleIdentifier() throws {
+        func app(_ value: String?) -> String? {
+            AgentEvent(agentID: "a", sessionID: "s", status: .working, app: value)?.app
+        }
+        XCTAssertEqual(app(" com.apple.Terminal "), "com.apple.Terminal")
+        XCTAssertEqual(app("com.todesktop.230313mzl4w4u92"), "com.todesktop.230313mzl4w4u92")
+        XCTAssertNil(app(nil))
+        XCTAssertNil(app("Terminal"))
+        XCTAssertNil(app("/Applications/Terminal.app"))
+        XCTAssertNil(app("com.apple.Terminal; rm -rf ~"))
+        XCTAssertNil(app(".com.apple"))
+        XCTAssertNil(app("com.äpple.Terminal"))
+        XCTAssertNil(app("a." + String(repeating: "b", count: 300)))
+    }
+
+    func testAnInvalidAppKeepsTheRestOfTheEvent() throws {
+        let event = try XCTUnwrap(AgentEvent(agentID: "a", sessionID: "s", status: .waiting, app: "not an app"))
+        XCTAssertNil(event.app)
+        XCTAssertEqual(event.status, .waiting)
+    }
+
+    func testSocketLinesCarryTheApp() throws {
+        let line = Data(#"{"agent":"claude-code","session":"s","status":"waiting","app":"com.apple.Terminal"}"#.utf8)
+        let event = try XCTUnwrap(AgentEventDecoder.decode(line: line))
+        XCTAssertEqual(event.app, "com.apple.Terminal")
+    }
+
     func testLongTextIsTruncated() throws {
         let event = try XCTUnwrap(AgentEvent(
             agentID: "codex",

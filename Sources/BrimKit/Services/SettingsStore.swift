@@ -9,6 +9,7 @@ public enum SettingsMigrator {
         1: { _ in }, // schema 2 adds preferredPlayerBundleID; nil is the automatic default
         2: { _ in }, // schema 3 adds agent retention; the 10-minute default is applied by decoding
         3: { _ in }, // schema 4 adds the opt-in agent notification flag; false is the default
+        4: { _ in }, // schema 5 adds the open mode and the live notch flag; both default on
     ]
 
     public static func migrate(_ data: Data) throws -> Settings {
@@ -38,6 +39,10 @@ public final class JSONSettingsStore: SettingsPersisting {
 
     public init(fileURL: URL = JSONSettingsStore.defaultURL) {
         self.fileURL = fileURL
+    }
+
+    public var hasSavedSettings: Bool {
+        FileManager.default.fileExists(atPath: fileURL.path)
     }
 
     public func load() -> Settings {

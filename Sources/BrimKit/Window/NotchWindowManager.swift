@@ -1,34 +1,40 @@
 import AppKit
+import Combine
 import CoreGraphics
 import Foundation
 
-/// Keeps exactly one panel window per eligible screen and forwards pointer events to each screen's
-/// state machine. Rebuilds on display changes so plugging in a monitor never leaves a stray window.
+/// Keeps exactly one panel window per eligible screen and forwards pointer events and the live notch state
+/// to each screen's controller. Rebuilds on display changes so plugging in a monitor never leaves a stray
+/// window, and when the module count changes because the expanded width depends on it.
 @MainActor
 final class NotchWindowManager {
     private let model: AppModel
     private let screens: ScreenProviding
     private let scheduler: Scheduling
     private let monitor: PointerMonitoring
-    private let metrics: PanelMetrics
+    private var metrics: PanelMetrics
     private var controllers: [String: NotchWindowController] = [:]
     private var screenObserver: NSObjectProtocol?
     private var rebuildTask: TaskHandle?
     private var showOnNonNotchedDisplays: Bool
+    private var moduleCount: Int
+    private var isLive: Bool
     private var screenSignature = ""
+    private var cancellables = Set<AnyCancellable>()
 
     init(
         model: AppModel,
         screens: ScreenProviding = NSScreenProvider(),
         scheduler: Scheduling = DispatchScheduler(),
-        monitor: PointerMonitoring,
-        metrics: PanelMetrics = PanelMetrics()
+        monitor: PointerMonitoring
     ) {
         self.model = model
         self.screens = screens
         self.scheduler = scheduler
         self.monitor = monitor
-        self.metrics = metrics
+        self.moduleCount = model.activeModules.count
+        self.metrics = PanelMetrics(moduleCount: model.activeModules.count)
+        self.isLive = model.liveModuleID != nil
         self.showOnNonNotchedDisplays = model.settings.showOnNonNotchedDisplays
 
         monitor.onMove = { [weak self] point in self?.pointerMoved(to: point) }
@@ -42,6 +48,18 @@ final class NotchWindowManager {
         ) { [weak self] _ in
             MainActor.assumeIsolated { self?.scheduleRebuild() }
         }
+
+        // `@Published` emits before the property is stored, so both sinks use the emitted value.
+        model.$liveModuleID
+            .map { $0 != nil }
+            .removeDuplicates()
+            .sink { [weak self] live in self?.setLive(live) }
+            .store(in: &cancellables)
+        model.$activeModules
+            .map(\.count)
+            .removeDuplicates()
+            .sink { [weak self] count in self?.setModuleCount(count) }
+            .store(in: &cancellables)
 
         rebuild()
     }
@@ -59,7 +77,23 @@ final class NotchWindowManager {
         }
     }
 
+    private func setLive(_ live: Bool) {
+        guard live != isLive else { return }
+        isLive = live
+        for controller in controllers.values {
+            controller.setLive(live)
+        }
+    }
+
+    private func setModuleCount(_ count: Int) {
+        guard count != moduleCount else { return }
+        moduleCount = count
+        metrics = PanelMetrics(moduleCount: count)
+        rebuild(force: true)
+    }
+
     func stop() {
+        cancellables.removeAll()
         rebuildTask?.cancel()
         rebuildTask = nil
         if let screenObserver {
@@ -123,6 +157,7 @@ final class NotchWindowManager {
                 model: model,
                 metrics: metrics,
                 timings: timings,
+                isLive: isLive,
                 scheduler: scheduler,
                 onActiveChange: { [weak model] active in
                     model?.setPanelActive(screenID: screen.id, active: active)
@@ -145,6 +180,10 @@ final class NotchWindowManager {
     }
 
     private static func timings(for settings: Settings) -> PanelTimings {
-        PanelTimings(hoverDelay: settings.hoverDelay, collapseDelay: settings.collapseDelay)
+        PanelTimings(
+            hoverDelay: settings.hoverDelay,
+            collapseDelay: settings.collapseDelay,
+            opensOnHover: settings.opensOnHover
+        )
     }
 }

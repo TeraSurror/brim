@@ -1,27 +1,28 @@
 # Brim
 
-A native macOS app that turns the MacBook notch into a hover-to-expand panel. Hover the notch for a peek, click or keep
-hovering for the full panel, and put glanceable, controllable things right where the pointer already goes. The shell is
-built to host pluggable modules; media controls are the first real one.
+A native macOS app that turns the MacBook notch into a live, hover-to-expand panel. While music plays or a coding agent
+needs you, the notch widens to show it; hover (or click) the notch for the full panel. The shell hosts pluggable
+modules: Now Playing, Agent Status and a clock today.
 
+- **Live notch**: artwork and a playing indicator beside the notch while media plays, or an orange/red status glyph
+  when an agent needs input or fails, without opening anything
 - **Notch window** that never takes focus, follows every Space, and works over full-screen apps
-- **Peek → expand → collapse** driven by a small, unit-tested state machine
-- **One panel per screen**, including a slim handle on displays without a notch
-- **Module host** with clock, Now Playing and Agent Status modules; AI tools plug in without touching the window shell
-- **Media controls**: artwork in the peek, then a full card with title, artist, progress, seek and transport buttons
-  for anything macOS reports (Spotify, Music, Safari/YouTube, …), with optional direct Spotify/Music control
+- **Hover or click to open**, driven by a small, unit-tested state machine
+- **One panel per screen**, including a slim handle (or a live pill) on displays without a notch
+- **Module host**: the panel widens with each enabled module; features plug in without touching the window shell
+- **Media controls**: a card with artwork, title, artist, progress, seek and transport buttons for anything macOS
+  reports (Spotify, Music, Safari/Brave/Chrome/YouTube, …), with optional direct Spotify/Music control
 - **Agent status**: local Claude Code/Codex/Cursor/VS Code events over a Unix socket or `brim://` URL, with waiting,
-  working, done and failed rows in the panel
-- **Agent alerts**: opt-in notch alert or macOS banner when an agent is waiting or fails, with a click that opens the
-  project in Finder
-- **Works with no media**: the module disappears from the peek and shows a quiet empty state in the panel
-- **Settings** for hover/collapse timing, launch at login, modules and multi-display behaviour
+  working, done and failed rows in the panel; Claude Code connects from Settings in one click
+- **Agent alerts**: opt-in card from the notch (or a macOS banner) when an agent is waiting or fails; clicking it
+  switches to the terminal or editor running the session
+- **Settings** for open mode and timing, the live notch, launch at login, modules and multi-display behaviour
 - **No network access, no analytics, no menu bar icon** (M1/M2; Agent Status is local-only)
 
 ## Status
 
-M1 (notch panel shell), M2 (media controls), M3 F7 (agent status) and M3 F8 (agent alerts/open project) are implemented
-and unit tested. Real-player, real-Claude-Code-hook and visual sign-off still need a person at the screen. See
+M1 (notch panel shell), M2 (media controls), M3 F7/F8 (agent status and alerts) and the UX revision F9–F13 (live
+notch, hover-to-open, alerts that lead to the agent, first-run setup, panel sizing) are implemented and unit tested. Real-player, real-Claude-Code-hook and visual sign-off still need a person at the screen. See
 [`docs/PROGRESS.md`](docs/PROGRESS.md) for what is verified and the next session's starting point; the checklists are in
 [`docs/TESTING.md`](docs/TESTING.md).
 
@@ -54,7 +55,7 @@ Bundle ID: `com.harshshelar.brim`. Settings live in
 
 ## Agent status (M3 F7)
 
-Agent Status is off by default. Turn it on in **Settings → Modules → Agent Status**; no permission prompt appears. It
+Agent Status is off by default. Turn it on in **Settings → Agents** (or Modules); no permission prompt appears. It
 starts a local Unix socket at `~/Library/Application Support/Brim/agent.sock` (`0600`, removed on quit) and accepts
 `brim://agent` URLs. Nothing leaves the Mac.
 
@@ -71,17 +72,23 @@ or opens the equivalent URL:
 open -g 'brim://agent?agent=claude-code&session=demo&status=waiting&title=Approve%20a%20tool%20call'
 ```
 
-Statuses are `working`, `waiting`, `done` and `error`; `title`, `detail`, `costUSD`, `cwd` and `timestamp` are
-optional. `action=dismiss&agent=…&session=…` removes one row and `action=clear` clears the roster. The panel sorts
-waiting first, then failures, working and done.
+Statuses are `working`, `waiting`, `done` and `error`; `title`, `detail`, `costUSD`, `cwd`, `app` and `timestamp` are
+optional. `app` is the bundle identifier of the terminal or editor running the session (for example
+`com.apple.Terminal`); it is validated, never executed, and only used to bring that app forward. A hook can read it from
+`$__CFBundleIdentifier`, which macOS sets for processes started from an app. `action=dismiss&agent=…&session=…` removes
+one row and `action=clear` clears the roster. The panel sorts waiting first, then failures, working and done.
 
-Claude Code is the reference integration: [`docs/TESTING.md`](docs/TESTING.md) has a ready-to-save
-`~/.brim/claude-hook.sh` and the `~/.claude/settings.json` hooks. Codex, Cursor, VS Code extensions and plain scripts
-use the same contract.
+Claude Code is the reference integration. **Settings → Agents → Claude Code → Connect…** explains what it changes, then
+writes `~/.brim/claude-hook.sh`, backs up `~/.claude/settings.json` and adds Brim's hooks next to any you already have.
+Start a new Claude Code session afterwards. **Disconnect…** removes them again, and an older manual setup shows as
+"Connected with an older hook" with an **Update…** button. Codex, Cursor, VS Code extensions and plain scripts use the
+same contract.
 
-Agent alerts are a separate opt-in in **Settings → General → Agents**. Brim shows a small card under the notch while
-the panel is closed, and uses a macOS notification banner when the system allows it. Clicking the alert's folder button
-opens the session's `cwd` in Finder; agent rows have the same button.
+While an agent is waiting or has failed, the notch shows an orange or red glyph beside it; opening the panel
+acknowledges a failure. Agent alerts are a separate opt-in in **Settings → Agents → Alerts**: a card drops from the top
+of the screen you are on while the panel is closed, or a macOS banner when the system allows it. Clicking the card
+switches to the app running the session (or opens its `cwd` in Finder when the app is unknown); agent rows have the
+same button.
 
 > System banners require a signed build. On the ad-hoc development build macOS returns “Notifications are not allowed
 > for this application”, so Brim uses the notch alert instead. The behavior is otherwise identical.
@@ -89,14 +96,14 @@ opens the session's `cwd` in Finder; agent rows have the same button.
 ## Code layout
 
 - `Sources/BrimKit/Window/`: all AppKit panel code (`NSPanel`, frames, pointer tracking, per-screen manager, notch alerts)
-- `Sources/BrimKit/State/`: pure hover/expand geometry, the state machine, agent roster and alert geometry, driven by an
-  injected scheduler/clock
+- `Sources/BrimKit/State/`: pure panel/live-notch geometry, the state machine, live-activity priority, agent roster and
+  alert geometry, driven by an injected scheduler/clock
 - `Sources/BrimKit/Modules/`: `BrimModule`, registry, the clock, Now Playing and Agent Status modules
 - `Sources/BrimKit/Services/`: protocols plus real implementations (screens, login item, settings, permissions,
   MediaRemote helper process, Spotify/Music Apple Events, now-playing coordinator, agent Unix socket/URL router,
-  local notifications and Finder project opening)
-- `Sources/BrimKit/Model/`: `ScreenInfo`, `PanelState`, `NowPlaying`, `AgentEvent`, `AgentNotification`, `Settings`,
-  permissions
+  local notifications, opening a session's app or folder, and the Claude Code hook installer)
+- `Sources/BrimKit/Model/`: `ScreenInfo`, `PanelState`, `LiveActivity`, `NowPlaying`, `AgentEvent`,
+  `AgentNotification`, `Settings`, permissions
 - `scripts/build-media-adapter.sh`: builds the pinned third-party helper into `.build/media-adapter`
 - `Sources/BrimKit/UI/`: SwiftUI panel, media/agent cards and settings views; no `NSPanel` or `NSScreen` access
 - `Sources/BrimKit/App/`: composition root, app delegate, settings window, shared model
@@ -110,11 +117,13 @@ Architecture rules and conventions are in [`AGENTS.md`](AGENTS.md). In short: on
 
 ### Media does not appear
 
-- Turn the module on: **Settings → Modules → Now Playing**. It is off by default so the M1 panel stays unchanged.
-- The first enable shows Brim's explanation, then macOS may ask for Automation (only for Spotify or Music that is
-  running). Declining still leaves macOS-reported media working.
-- Media appears only while a panel is open — Brim deliberately stops the helper when it collapses to keep idle cost
-  near zero. The first peek can take a fraction of a second to show the track.
+- Turn the module on: **Settings → Media → Turn On Now Playing**. New installs have it on; older settings files keep
+  their module list. Turning it on asks for nothing. Automation is only requested when you choose to follow Spotify or
+  Music in **Settings → Media**; declining still leaves macOS-reported media working.
+- With **Settings → General → Show activity beside the notch** on, the helper keeps running while Now Playing is enabled
+  so the notch can show what plays. With it off, the helper runs only while the panel is open, and the first open can
+  take a fraction of a second to show the track.
+- The live notch hides 3 seconds after playback pauses or stops. An agent that needs input takes priority over media.
 - Check the helper and the log:
   ```sh
   pgrep -fl 'mediaremote-adapter|brim-media-supervisor'
@@ -128,7 +137,9 @@ Architecture rules and conventions are in [`AGENTS.md`](AGENTS.md). In short: on
 
 ### Agent status does not appear
 
-- Turn the module on: **Settings → Modules → Agent Status**. It is off by default.
+- Turn the module on: **Settings → Agents → Turn On Agent Status**. It is off by default.
+- **Show a Test Session** in the same tab adds a waiting row; if it appears, the panel side works and the problem is
+  the integration.
 - Check the listener and permissions:
   ```sh
   ls -l "$HOME/Library/Application Support/Brim/agent.sock"
@@ -145,11 +156,11 @@ Architecture rules and conventions are in [`AGENTS.md`](AGENTS.md). In short: on
 
 ### Agent alerts do not appear
 
-- Turn on **Settings → General → Agents → Notify when an agent needs input** and leave Agent Status enabled.
+- Turn on **Settings → Agents → Alert when an agent needs input or fails** and leave Agent Status enabled.
 - Alerts only fire when a session *newly* enters waiting or failed, and only while no panel is open. A repeated waiting
   event does not alert again.
-- The notch alert appears for about 7 seconds under the notch. Look there, not in Notification Center, especially on
-  an ad-hoc development build.
+- The notch alert drops from the top of the screen under the pointer for about 7 seconds (longer while you hover it).
+  Look there, not in Notification Center, especially on an ad-hoc development build. Opening the panel dismisses it.
 - Check the module state:
   ```sh
   log stream --level debug --predicate 'subsystem == "com.harshshelar.brim" AND category == "agent"'
@@ -163,12 +174,13 @@ Architecture rules and conventions are in [`AGENTS.md`](AGENTS.md). In short: on
 ### Automation was denied or keeps asking
 
 macOS grants Automation per player and only prompts for a player that is running. Start Spotify or Music, then use
-**Settings → General → Grant Automation…**. Ad-hoc rebuilding can reset grants; re-grant after a dev rebuild.
+**Settings → Media → Grant Automation…**. Ad-hoc rebuilding can reset grants; re-grant after a dev rebuild.
 
 ### The panel does not appear on hover
 
 - Check that the pointer reaches the very top edge, inside the notch on a notched display, or the small handle at the
   top center of a display without one.
+- **Settings → General → Open the panel** may be set to "On click"; then hovering does nothing by design.
 - Confirm Brim is running: `pgrep -fl '/Brim.app/Contents/MacOS/Brim'`.
 - Check the logs:
   `log stream --predicate 'subsystem == "com.harshshelar.brim"'`.
@@ -179,8 +191,9 @@ macOS grants Automation per player and only prompts for a player that is running
 
 ### Settings window does not open
 
-Use the gear in the expanded panel or right-click → Settings…. While a Brim window is focused, ⌘, also works. Brim is an
-agent app, so there is no Dock icon to click.
+Open Brim again (double-click `Brim.app`, Spotlight, or `open -a Brim`): a running Brim answers by showing Settings.
+The gear in the expanded panel and right-click → Settings… also work. Brim is an agent app, so there is no Dock icon to
+click.
 
 ### A rebuild dropped a permission or login item
 

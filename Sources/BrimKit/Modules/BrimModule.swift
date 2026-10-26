@@ -1,3 +1,4 @@
+import Combine
 import SwiftUI
 
 /// The extension point for everything that lives in the panel. Modules own their content and their
@@ -17,14 +18,24 @@ public protocol BrimModule: AnyObject, Identifiable {
     var isEnabled: Bool { get }
     func setEnabled(_ enabled: Bool)
 
-    /// True while any panel on any screen is open (including the peek). Modules that own a monitor start
-    /// and stop here so a collapsed notch costs nothing.
+    /// True while any expanded panel is open on any screen. Modules that own a monitor only for the panel
+    /// start and stop here so a collapsed notch costs nothing.
     func setPanelActive(_ active: Bool)
 
-    func compactView() -> AnyView
+    /// Content the module wants beside the notch while the panel is closed, or nil. The publisher emits the
+    /// new value, so subscribers never have to read the property during `willSet`.
+    var liveActivity: LiveActivity? { get }
+    var liveActivityPublisher: AnyPublisher<LiveActivity?, Never> { get }
+    /// One ear of the live notch. Only called while this module's activity is the one shown.
+    func liveView(_ edge: LiveActivityEdge) -> AnyView
+
     func expandedView() -> AnyView
 }
 
 public extension BrimModule {
     func setPanelActive(_ active: Bool) {}
+
+    var liveActivity: LiveActivity? { nil }
+    var liveActivityPublisher: AnyPublisher<LiveActivity?, Never> { Just(nil).eraseToAnyPublisher() }
+    func liveView(_ edge: LiveActivityEdge) -> AnyView { AnyView(EmptyView()) }
 }

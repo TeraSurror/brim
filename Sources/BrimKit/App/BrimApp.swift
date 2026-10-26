@@ -24,6 +24,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
+    /// Brim has no Dock or menu bar icon, so opening it again from Finder or Spotlight is how people look
+    /// for it. Show Settings instead of doing nothing.
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        MainActor.assumeIsolated {
+            AppEnvironment.shared.controller.openSettings()
+        }
+        return false
+    }
+
     func applicationWillTerminate(_ notification: Notification) {
         MainActor.assumeIsolated {
             AppEnvironment.shared.controller.stop()

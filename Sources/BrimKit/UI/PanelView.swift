@@ -5,9 +5,12 @@ import SwiftUI
 struct PanelView: View {
     @ObservedObject var model: AppModel
     @ObservedObject var panel: PanelStateModel
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let isNotched: Bool
     let topInset: CGFloat
-    let peekSize: CGSize
+    /// The full live notch. Ear content keeps this size while the window grows, so it never reflows.
+    let liveSize: CGSize
+    let earWidth: CGFloat
     let expandedSize: CGSize
     let openSettings: () -> Void
     let quit: () -> Void
@@ -17,18 +20,23 @@ struct PanelView: View {
     }
 
     /// Fade the incoming layout in with a tiny lift; the outgoing one just fades so the two layouts do
-    /// not appear to slide through each other.
+    /// not appear to slide through each other. Reduce Motion keeps only the fade.
     private var contentTransition: AnyTransition {
-        .asymmetric(
-            insertion: .opacity.combined(with: .offset(y: 6)),
-            removal: .opacity
-        )
+        reduceMotion
+            ? .opacity
+            : .asymmetric(insertion: .opacity.combined(with: .offset(y: 6)), removal: .opacity)
+    }
+
+    private var contentAnimation: Animation {
+        reduceMotion ? .easeInOut(duration: 0.15) : .spring(response: 0.34, dampingFraction: 0.88)
     }
 
     var body: some View {
         ZStack(alignment: .top) {
             if panel.state == .collapsed {
-                if isNotched {
+                if panel.showsLiveShape {
+                    liveNotch
+                } else if isNotched {
                     Color.clear
                 } else {
                     handle
@@ -36,21 +44,15 @@ struct PanelView: View {
             } else {
                 chrome
                 ZStack(alignment: .top) {
-                    if panel.content == .peek {
-                        // Keep each layout at its own target width so the window growth does not
-                        // reflow the content while it is animating.
-                        peekContent
-                            .frame(width: peekSize.width, height: peekSize.height, alignment: .top)
-                            .transition(contentTransition)
-                    }
                     if panel.content == .expanded {
+                        // Keep the layout at its target size so the window growth does not reflow it.
                         expandedContent
                             .frame(width: expandedSize.width, height: expandedSize.height, alignment: .top)
                             .transition(contentTransition)
                     }
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-                .animation(.spring(response: 0.34, dampingFraction: 0.88), value: panel.content)
+                .animation(contentAnimation, value: panel.content)
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
@@ -75,6 +77,32 @@ struct PanelView: View {
             .accessibilityHint("Hover or click to open")
     }
 
+    /// The notch widened into two ears, or a pill on a display without a notch. The middle stays empty: on
+    /// a notched display it is the hardware notch.
+    private var liveNotch: some View {
+        ZStack {
+            NotchPanelShape(bottomRadius: isNotched ? 10 : 12)
+                .fill(Color.black)
+
+            if panel.showsLiveContent, let module = model.liveModule {
+                HStack(spacing: 0) {
+                    module.liveView(.leading)
+                        .frame(width: earWidth, height: liveSize.height)
+                    Spacer(minLength: 0)
+                    module.liveView(.trailing)
+                        .frame(width: earWidth, height: liveSize.height)
+                }
+                .frame(width: liveSize.width, height: liveSize.height)
+                .transition(.opacity)
+            }
+        }
+        .animation(.easeOut(duration: 0.2), value: panel.showsLiveContent)
+        .animation(.easeOut(duration: 0.2), value: model.liveModuleID)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        .accessibilityElement(children: .contain)
+        .accessibilityHint("Hover or click to open the Brim panel")
+    }
+
     // MARK: - Open panel
 
     private var chrome: some View {
@@ -92,24 +120,6 @@ struct PanelView: View {
             .fill(fill)
             .overlay(shape.strokeBorder(Color.white.opacity(0.055), lineWidth: 1))
             .clipShape(shape)
-    }
-
-    private var peekContent: some View {
-        HStack(spacing: 22) {
-            if model.activeModules.isEmpty {
-                Text("Brim")
-                    .font(.system(size: 13, weight: .semibold, design: .rounded))
-                    .foregroundStyle(.white.opacity(0.5))
-            } else {
-                ForEach(model.activeModules, id: \.id) { module in
-                    module.compactView()
-                }
-            }
-        }
-        .padding(.horizontal, 24)
-        .padding(.top, topPadding)
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-        .accessibilityElement(children: .contain)
     }
 
     private var expandedContent: some View {
@@ -138,7 +148,7 @@ struct PanelView: View {
             if model.activeModules.isEmpty {
                 emptyModules
             } else {
-                HStack(alignment: .top, spacing: 14) {
+                HStack(alignment: .top, spacing: PanelMetrics.moduleSpacing) {
                     ForEach(model.activeModules, id: \.id) { module in
                         module.expandedView()
                             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
@@ -146,7 +156,7 @@ struct PanelView: View {
                 }
             }
         }
-        .padding(.horizontal, 18)
+        .padding(.horizontal, PanelMetrics.panelHorizontalPadding)
         .padding(.top, topPadding)
         .padding(.bottom, 18)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)

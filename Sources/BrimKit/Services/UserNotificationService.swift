@@ -2,11 +2,11 @@ import Foundation
 import UserNotifications
 
 /// Thin wrapper around `UNUserNotificationCenter`. The delegate is set in `init`, so a notification
-/// click can open the session's project even when Brim was launched by the notification.
+/// click can open the session's app or project even when Brim was launched by the notification.
 @MainActor
 public final class UserNotificationService: NSObject, AgentNotifying, UNUserNotificationCenterDelegate {
     public private(set) var authorization: NotificationAuthorization = .notDetermined
-    public var onOpenProject: ((String) -> Void)?
+    public var onOpen: ((AgentOpenTarget) -> Void)?
 
     private let center = UNUserNotificationCenter.current()
 
@@ -44,9 +44,10 @@ public final class UserNotificationService: NSObject, AgentNotifying, UNUserNoti
         content.title = notification.title
         content.body = notification.body
         content.sound = .default
-        if let cwd = notification.cwd, !cwd.isEmpty {
-            content.userInfo = ["cwd": cwd]
-        }
+        var userInfo: [String: String] = [:]
+        userInfo["cwd"] = notification.target.cwd
+        userInfo["app"] = notification.target.app
+        content.userInfo = userInfo
 
         let request = UNNotificationRequest(
             identifier: "brim-agent-\(UUID().uuidString)",
@@ -77,10 +78,11 @@ public final class UserNotificationService: NSObject, AgentNotifying, UNUserNoti
         didReceive response: UNNotificationResponse,
         withCompletionHandler completionHandler: @escaping () -> Void
     ) {
-        let cwd = response.notification.request.content.userInfo["cwd"] as? String
-        if let cwd, !cwd.isEmpty {
+        let info = response.notification.request.content.userInfo
+        let target = AgentOpenTarget(app: info["app"] as? String, cwd: info["cwd"] as? String)
+        if !target.isEmpty {
             Task { @MainActor [weak self] in
-                self?.onOpenProject?(cwd)
+                self?.onOpen?(target)
             }
         }
         completionHandler()

@@ -17,20 +17,22 @@ final class PanelStateMachineTests: XCTestCase {
         scheduler = FakeScheduler()
         machine = PanelStateMachine(
             screen: notched,
-            timings: PanelTimings(hoverDelay: 0.15, expandDelay: 0.7, collapseDelay: 0.4),
+            timings: PanelTimings(hoverDelay: 0.15, collapseDelay: 0.4),
             scheduler: scheduler
         )
     }
 
     private let notchPoint = CGPoint(x: 756, y: 16)
+    /// Inside the left ear of the live notch (notch is x 650…862, ears add 40 pt per side), outside the notch.
+    private let earPoint = CGPoint(x: 630, y: 16)
     private let away = CGPoint(x: 756, y: 500)
 
-    func testHoverShowsPeekExactlyAfterTheHoverDelay() {
+    func testHoverOpensTheFullPanelAfterTheHoverDelay() {
         machine.pointerMoved(to: notchPoint)
         scheduler.advance(by: 0.14)
         XCTAssertEqual(machine.state, .collapsed)
         scheduler.advance(by: 0.02)
-        XCTAssertEqual(machine.state, .peek)
+        XCTAssertEqual(machine.state, .expanded)
     }
 
     func testClickOpensTheFullPanelImmediately() {
@@ -40,15 +42,22 @@ final class PanelStateMachineTests: XCTestCase {
         XCTAssertEqual(machine.state, .expanded)
     }
 
-    func testHoveringLongerOpensTheFullPanel() {
+    func testClickModeIgnoresHoverButOpensOnClick() {
+        machine.update(timings: PanelTimings(hoverDelay: 0.15, collapseDelay: 0.4, opensOnHover: false))
         machine.pointerMoved(to: notchPoint)
-        scheduler.advance(by: 0.15)
-        XCTAssertEqual(machine.state, .peek)
+        scheduler.advance(by: 2)
+        XCTAssertEqual(machine.state, .collapsed)
 
-        scheduler.advance(by: 0.69)
-        XCTAssertEqual(machine.state, .peek)
-        scheduler.advance(by: 0.02)
+        machine.clicked(at: notchPoint)
         XCTAssertEqual(machine.state, .expanded)
+    }
+
+    func testSwitchingToClickModeCancelsAPendingHover() {
+        machine.pointerMoved(to: notchPoint)
+        scheduler.advance(by: 0.1)
+        machine.update(timings: PanelTimings(hoverDelay: 0.15, collapseDelay: 0.4, opensOnHover: false))
+        scheduler.advance(by: 1)
+        XCTAssertEqual(machine.state, .collapsed)
     }
 
     func testLeavingExpandedCollapsesAfterTheDelay() {
@@ -81,17 +90,7 @@ final class PanelStateMachineTests: XCTestCase {
         XCTAssertEqual(machine.state, .collapsed)
     }
 
-    func testLeavingPeekCollapses() {
-        machine.pointerMoved(to: notchPoint)
-        scheduler.advance(by: 0.15)
-        XCTAssertEqual(machine.state, .peek)
-
-        machine.pointerMoved(to: away)
-        scheduler.advance(by: 0.41)
-        XCTAssertEqual(machine.state, .collapsed)
-    }
-
-    func testLeavingBeforeThePeekCancelsIt() {
+    func testLeavingBeforeTheDelayCancelsTheOpen() {
         machine.pointerMoved(to: notchPoint)
         scheduler.advance(by: 0.1)
         machine.pointerMoved(to: away)
@@ -117,26 +116,55 @@ final class PanelStateMachineTests: XCTestCase {
 
         machine.pointerMoved(to: notchPoint)
         scheduler.advance(by: 0.15)
-        scheduler.advance(by: 0.7)
         machine.pointerMoved(to: away)
         scheduler.advance(by: 0.4)
 
-        XCTAssertEqual(states, [.peek, .expanded, .collapsed])
+        XCTAssertEqual(states, [.expanded, .collapsed])
+    }
+
+    func testTheEarsAreAHoverTargetOnlyWhileLive() {
+        machine.pointerMoved(to: earPoint)
+        scheduler.advance(by: 1)
+        XCTAssertEqual(machine.state, .collapsed)
+
+        machine.isLive = true
+        machine.pointerMoved(to: earPoint)
+        scheduler.advance(by: 0.15)
+        XCTAssertEqual(machine.state, .expanded)
+    }
+
+    func testClickingAnEarOpensThePanel() {
+        machine.isLive = true
+        machine.clicked(at: earPoint)
+        XCTAssertEqual(machine.state, .expanded)
+    }
+
+    func testEarsAppearingUnderARestingPointerDoNotOpenThePanel() {
+        machine.pointerMoved(to: earPoint)
+        machine.isLive = true
+        scheduler.advance(by: 1)
+        XCTAssertEqual(machine.state, .collapsed)
+    }
+
+    func testEarsDisappearingCancelsAPendingOpen() {
+        machine.isLive = true
+        machine.pointerMoved(to: earPoint)
+        scheduler.advance(by: 0.1)
+        machine.isLive = false
+        scheduler.advance(by: 1)
+        XCTAssertEqual(machine.state, .collapsed)
     }
 
     func testPlainScreenHandleWorksTheSameWay() {
         let plain = ScreenInfo(frame: CGRect(x: 0, y: 0, width: 1920, height: 1080))
         let handleMachine = PanelStateMachine(
             screen: plain,
-            timings: PanelTimings(hoverDelay: 0.15, expandDelay: 0.7, collapseDelay: 0.4),
+            timings: PanelTimings(hoverDelay: 0.15, collapseDelay: 0.4),
             scheduler: scheduler
         )
 
         handleMachine.pointerMoved(to: CGPoint(x: 960, y: 5))
         scheduler.advance(by: 0.15)
-        XCTAssertEqual(handleMachine.state, .peek)
-
-        handleMachine.clicked(at: CGPoint(x: 960, y: 5))
         XCTAssertEqual(handleMachine.state, .expanded)
     }
 }

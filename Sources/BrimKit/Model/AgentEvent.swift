@@ -36,6 +36,7 @@ public struct AgentEvent: Equatable, Sendable {
     public static let maxTitleLength = 200
     public static let maxDetailLength = 300
     public static let maxPathLength = 1024
+    public static let maxAppLength = 255
     public static let maxCost = 10_000.0
 
     public let agentID: String
@@ -45,6 +46,9 @@ public struct AgentEvent: Equatable, Sendable {
     public let detail: String?
     public let costUSD: Double?
     public let cwd: String?
+    /// Bundle identifier of the app running the session (a terminal or editor). Only ever used to look up
+    /// an installed app to bring forward; never executed or opened as a path.
+    public let app: String?
     public let timestamp: Date
 
     public init?(
@@ -55,6 +59,7 @@ public struct AgentEvent: Equatable, Sendable {
         detail: String? = nil,
         costUSD: Double? = nil,
         cwd: String? = nil,
+        app: String? = nil,
         timestamp: Date = Date()
     ) {
         let agent = agentID.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -70,7 +75,18 @@ public struct AgentEvent: Equatable, Sendable {
         self.detail = Self.clean(detail, limit: Self.maxDetailLength)
         self.costUSD = costUSD
         self.cwd = Self.clean(cwd, limit: Self.maxPathLength)
+        // An invalid app drops only that field: the status update is still worth showing.
+        self.app = Self.bundleIdentifier(app)
         self.timestamp = timestamp
+    }
+
+    /// Reverse-DNS characters only, with at least one dot, so the value can name an app and nothing else.
+    static func bundleIdentifier(_ value: String?) -> String? {
+        guard let value = clean(value, limit: maxAppLength + 1), value.count <= maxAppLength,
+              value.contains("."), !value.hasPrefix("."), !value.hasSuffix(".") else { return nil }
+        let allowed = CharacterSet.alphanumerics.union(CharacterSet(charactersIn: ".-"))
+        guard value.unicodeScalars.allSatisfy({ $0.isASCII && allowed.contains($0) }) else { return nil }
+        return value
     }
 
     private static func clean(_ value: String?, limit: Int) -> String? {
@@ -91,6 +107,7 @@ public struct AgentSession: Identifiable, Equatable, Sendable {
     public var detail: String
     public var costUSD: Double?
     public var cwd: String?
+    public var app: String?
     public var status: AgentStatus
     public let startedAt: Date
     public var updatedAt: Date
@@ -98,6 +115,7 @@ public struct AgentSession: Identifiable, Equatable, Sendable {
     public var agentName: String { AgentCatalog.displayName(for: agentID) }
     public var displayTitle: String { title.isEmpty ? sessionID : title }
     public var displayDetail: String { detail.isEmpty ? status.title : detail }
+    public var openTarget: AgentOpenTarget { AgentOpenTarget(app: app, cwd: cwd) }
     public var costText: String? {
         guard let costUSD else { return nil }
         return String(format: "$%.2f", costUSD)
@@ -115,6 +133,7 @@ public struct AgentSession: Identifiable, Equatable, Sendable {
         self.detail = event.detail ?? ""
         self.costUSD = event.costUSD
         self.cwd = event.cwd
+        self.app = event.app
         self.status = event.status
         self.startedAt = event.timestamp
         self.updatedAt = event.timestamp
@@ -133,6 +152,7 @@ public enum AgentCatalog {
     /// Friendly names for the tools we document; anything else is shown as the integration named it.
     public static func displayName(for agentID: String) -> String {
         switch agentID.lowercased() {
+        case "brim": "Brim"
         case "claude-code", "claude": "Claude Code"
         case "codex": "Codex"
         case "cursor": "Cursor"
@@ -167,6 +187,7 @@ public enum AgentEventDecoder {
         let detail: String?
         let costUSD: Double?
         let cwd: String?
+        let app: String?
         let timestamp: String?
     }
 
@@ -182,6 +203,7 @@ public enum AgentEventDecoder {
             detail: wire.detail,
             costUSD: wire.costUSD,
             cwd: wire.cwd,
+            app: wire.app,
             timestamp: AgentTimestamp.parse(wire.timestamp) ?? now
         )
     }

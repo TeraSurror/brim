@@ -4,9 +4,11 @@ This file is the handoff between sessions. Read it with `AGENTS.md` and the spec
 before ending a session.
 
 **Last updated:** 2026-10-25
-**Current milestone:** M3 — F7 agent status and F8 agent alerts/open project, code complete; manual sign-off pending
-**Next action:** run the M1, M2 and M3 manual checks in [`TESTING.md`](TESTING.md). Then design the next M3 feature
-(quick prompt or send-to-assistant) before writing its acceptance criteria.
+**Current milestone:** UX revision (F9–F13, spec section "UX revision: live notch") — code complete, uncommitted;
+manual sign-off pending
+**Next action:** review and commit the UX revision (one commit per feature if wanted), then run the F9–F13 rows in
+[`TESTING.md`](TESTING.md), including Settings → Agents → Update… for the Claude Code hook. After that, design the
+"not designed yet" items (full screen, keyboard, drag and drop) or the next M3 feature before writing criteria.
 
 ## How to resume
 
@@ -24,10 +26,78 @@ before ending a session.
 | M1 — Notch panel shell | Code complete (F1–F5), 47 unit tests pass, manual visual sign-off pending |
 | M2 — Media controls | Code complete (F6), 100 unit tests pass, real-player and visual sign-off pending |
 | M3 — AI tools and IDE integration | F7 (agent status) and F8 (alerts/open project) code complete; 184 unit tests pass; manual sign-off pending. Quick prompt and send-to-assistant are not designed |
+| UX revision — live notch | F9–F13 code complete; 247 unit tests pass; partly verified against the running app; manual sign-off pending |
 | Stretch goals | Not started |
 
 Test machine: macOS 26.6.2, Apple Silicon. Displays seen during development: primary 1920×1080 (no notch) and built-in
 1470×956 with a 179×32 notch. Minimum target remains macOS 14.
+
+## UX revision (F9–F13) — what exists
+
+Spec section "UX revision: live notch", written from a NotchNook comparison review. The user asked for the spec and
+the implementation in the same request (2026-10-25), which was taken as approval of this plan. The file list below was
+the plan and is now what exists.
+
+- **F9** — `PanelState` is `.collapsed`/`.expanded`; the state machine opens on hover (or click only, `opensOnHover`),
+  with the live ears as part of the hover target. The controller plays a haptic on open and cross-fades under Reduce
+  Motion. The compact/peek views are gone.
+- **F10** — `BrimModule` publishes `liveActivity` and draws `liveView(.leading/.trailing)`; `LiveActivityResolver` picks
+  attention > media > ambient, ties by module order; `AppModel.liveModuleID` drives `NotchWindowManager.setLive`. Media
+  is live while playing (3 s grace). Agents are live while waiting/failed (attention, failures acknowledged on panel
+  open) or working (ambient). With the setting on, the media helper runs while the module is enabled; the coordinator
+  restarts it with a 5 s / 30 s / 5 min backoff and polls a followed player every 3 s while the panel is closed.
+- **F11** — events, sessions and notifications carry an optional validated `app`. `AgentOpenTarget` prefers activating
+  the app via Launch Services and falls back to Finder. The notch alert hangs from the top of the pointer's screen,
+  pauses on hover, opens on a click anywhere, and is dismissed when a panel opens.
+- **F12** — new installs enable media + clock; media needs no permission to enable; the panel's player menu sends the
+  user to Settings → Media when Automation is missing; reopening Brim and the first launch show Settings (with a
+  welcome note). `ClaudeHookInstaller` installs/updates/removes the hook with backups and refuses unparsable files.
+  Settings has General/Media/Agents/Modules/About tabs and "Show a Test Session". Schema 5.
+- **F13** — the expanded width is 290 pt per module (min 460) and the manager rebuilds on module-count changes; the
+  clock scales instead of wrapping; the media card uses its full layout down to 240 pt and an icon-only source menu.
+- Brave, Arc, Firefox, Opera and Vivaldi have named Now Playing sources (found while verifying: Brave showed as
+  "Browser").
+
+Tests: `LiveActivityResolverTests`, `ClaudeHookInstallerTests` (temp home directory), rewritten
+`PanelStateMachineTests`/`PanelGeometryTests`/`AgentAlertGeometryTests`, and new cases in media module, coordinator,
+agent module/event/roster/URL, settings and AppModel suites. 247 tests total.
+
+Protocol and model changes:
+
+```
+Model/PanelState.swift          .collapsed / .expanded (peek removed)
+Model/LiveActivity.swift        NEW  LiveActivity (priority), LiveActivityPriority, LiveActivityEdge
+Model/Settings.swift            schema 5: opensOnHover, showLiveActivity; new-install modules media + clock
+Model/AgentEvent.swift          optional `app` bundle ID on events, sessions and notifications
+Modules/BrimModule.swift        compactView() → liveActivity + liveActivityPublisher + liveView(_:)
+Services/Protocols.swift        SettingsPersisting.hasSavedSettings; WorkspaceOpening.activateApplication;
+                                AgentNotifying.onOpen(AgentOpenTarget); ClaudeHookInstalling (NEW)
+Services/NowPlayingService.swift  NowPlayingProviding.setPanelVisible(_:) (slower poll while closed)
+```
+
+Files:
+
+```
+State/PanelStateMachine.swift   F9  hover/click open, live hit area, no peek
+State/PanelGeometry.swift       F9/F10/F13  live frame, pill, width per module count
+State/LiveActivityResolver.swift  F10 NEW  highest priority wins, ties by module order
+Window/NotchWindowController.swift  F9/F10  live frame animation, haptic, reduce motion
+Window/NotchWindowManager.swift F10/F13  forwards live state, rebuilds on module count
+Window/AgentAlertPresenter.swift  F11  top-anchored alert on the pointer's screen, hover pause
+State/AgentAlertGeometry.swift  F11  top-anchored frame, screen choice
+UI/PanelView.swift              F9/F10  no peek, live ears
+UI/MediaLiveView.swift          F10 (replaces MediaCompactView)
+UI/AgentLiveView.swift          F10 (replaces AgentCompactView; keeps AgentStatusGlyph)
+UI/AgentAlertView.swift         F11  panel shape, whole card clickable
+UI/SettingsView.swift           F9/F10/F12  General / Media / Agents / Modules / About tabs, welcome note
+Modules/MediaModule.swift       F10/F12  live activity + 3 s grace, background monitoring, no required permission
+Modules/AgentModule.swift       F10/F11  live activity, acknowledgement, dismiss alert on open, open app
+Services/NowPlayingCoordinator.swift  F10  helper restart backoff, 3 s poll while closed
+Services/WorkspaceService.swift F11  activate an app by bundle ID
+Services/ClaudeHookInstaller.swift  F12 NEW  hook script + settings.json merge/remove, pure static helpers
+App/AppModel.swift              F10/F12  live module, settings tab, first launch, panel player choice
+App/BrimApp.swift               F12  reopen opens Settings
+```
 
 ## M3 F8 — what exists
 
@@ -270,6 +340,28 @@ could not be automated are listed under **Manual sign-off still needed**.
 - [ ] **Manual visual sign-off**: light/dark mode, a long session list, and the card beside clock + media on the notched
   display. See [`TESTING.md`](TESTING.md).
 
+## UX revision acceptance checklist
+
+`[x]` = implemented and covered by a unit test or checked against the running app (see the "Verified by the agent"
+note in [`TESTING.md`](TESTING.md)). `[ ]` = needs a person at the screen.
+
+- [x] **F9** Hover opens the full panel after the hover delay; no peek. Verified with a pointer warp (934×320).
+- [x] **F9** Open mode (hover/click) in settings, schema 5 migration. Unit tested.
+- [ ] **F9** Haptic tap and Reduce Motion cross-fade. Code paths exist; not observable here.
+- [x] **F10** Live ears while media plays (259×32 on the 179×32 notch; 150×24 pill on the external display), from the
+  real Brave/YouTube stream with the panel closed.
+- [x] **F10** Agent waiting takes the ears from media; working hands them back. Verified with socket events.
+- [x] **F10** Grace period, acknowledgement, priority, helper lifecycle and restart backoff. Unit tested.
+- [ ] **F10** Clicks on the ears never reach the menu bar; idle CPU/memory with the helper running for 10 minutes.
+- [x] **F11** `app` validation/transport, open-app-then-Finder fallback, dismiss-on-open. Unit tested.
+- [x] **F11** The alert drops from the top of the pointer's screen. Verified (360×64 at y 0 on the external display).
+- [ ] **F11** Click-anywhere and hover-pause on the real card; a real Claude Code session switching to its terminal.
+- [x] **F12** Defaults, no-permission media, panel player choice, first launch, hook install/update/remove. Unit tested.
+- [x] **F12** Reopen shows Settings with the five tabs. Verified.
+- [ ] **F12** Update… on the real `~/.claude/settings.json` (left for the user: it edits their Claude Code config).
+- [x] **F13** Width per module count, clock line limit, media full layout threshold. Unit tested; 934 pt seen live.
+- [ ] Light/dark mode, full-screen app, keyboard-only settings, VoiceOver on the ears and the alert.
+
 ## M3 F8 acceptance checklist
 
 - [x] **Opt-in only**: Agent alerts are off by default; enabling them shows an in-app explanation before any macOS
@@ -425,6 +517,16 @@ agent process). Run through [`TESTING.md`](TESTING.md).
 | 2026-10-25 | Alerts fire only on a transition into waiting/error, and not while a panel is open | Repeated hooks should not spam banners; the user is already looking when the panel is open |
 | 2026-10-25 | Open project uses Finder rather than Terminal | No app-specific terminal detection or Automation permission; Finder always exists and the path is visible |
 | 2026-10-25 | Schema 4 adds the opt-in agent alert flag | The alert is off by default and never asks for a permission at launch |
+| 2026-10-25 | Replace the hover peek with a live notch (UX revision) | NotchNook-style: glanceable state belongs at rest, not behind a hover; the peek duplicated the panel and added 0.7 s |
+| 2026-10-25 | Keep the media helper running while the live notch is on | Brim (~33 MB) plus the helper (~25 MB) stays under the 80 MB budget; without it the notch cannot know what plays |
+| 2026-10-25 | One module owns both ears; attention > media > ambient | Splitting ears between modules was unreadable at 40 pt; an agent that needs you matters more than music |
+| 2026-10-25 | Ears appearing under a resting pointer never open the panel | Media starting while the pointer sits near the notch must not pop the panel open |
+| 2026-10-25 | Opening the panel acknowledges failures, not waits | A failure has been seen once the panel shows it; a wait still needs action in the agent's app |
+| 2026-10-25 | Open the session's app via Launch Services, fall back to Finder | `NSRunningApplication.activate` is ignored for an inactive caller on macOS 14+; Finder was the wrong destination for "needs input" |
+| 2026-10-25 | Hook reports `$__CFBundleIdentifier` and the project folder name | macOS sets the variable for processes launched from an app, so the hook names Terminal/iTerm/VS Code with no config |
+| 2026-10-25 | Brim edits `~/.claude/settings.json` only from an explicit button, with a backup, never when unparsable | It is another app's config; the user must see what changes and be able to undo it |
+| 2026-10-25 | Panel width grows by 290 pt per module instead of splitting 600 pt | Three modules at ~178 pt each truncated the media card and wrapped the clock |
+| 2026-10-25 | Now Playing needs no permission to enable; new installs enable media + clock | The headline feature was behind an Automation sheet it doesn't need |
 
 ## Session log
 
@@ -545,3 +647,18 @@ agent process). Run through [`TESTING.md`](TESTING.md).
 - Added folder buttons to agent rows and verified Finder opens the session's `cwd`.
 - 184 tests pass. Remaining: signed-build banner/click sign-off, notch-alert light/dark/VoiceOver sign-off. Quick prompt and
   send-to-assistant are still not designed.
+
+### 2026-10-25 — UX review and revision (F9–F13)
+
+- Reviewed the implementation against NotchNook and the spec from a user's point of view. Main findings: the collapsed
+  notch never showed anything (media helper stopped, no live activity), the peek duplicated the panel, agent alerts led
+  to Finder and overlapped an opened panel, setup hid the headline features (clock-only default, an Automation sheet
+  to enable media, a hand-installed Claude Code hook, no reopen), and three modules squeezed into 600 pt.
+- Wrote the spec section "UX revision: live notch" (F9–F13 plus not-designed items) and the file/protocol plan above.
+- Implemented F9–F13 as described in "UX revision — what exists". 247 tests pass.
+- Verified against the running debug build: live ears with real media, hover to open/collapse, agent priority over
+  media, the alert on the pointer's screen, reopen → Settings, diagnostics, and the hook script against a scratch
+  socket. Found and fixed Brave showing as "Browser". Restored the user's settings file afterwards; Brim was left not
+  running, as it was found.
+- Not committed: the user asked for implementation, not a commit. Not done: the user's own Claude Code hook was left
+  at the old version (Settings → Agents → Update… upgrades it).

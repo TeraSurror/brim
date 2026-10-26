@@ -1,3 +1,4 @@
+import Combine
 import CoreGraphics
 import Foundation
 import SwiftUI
@@ -72,16 +73,19 @@ final class FakeLoginItems: LoginItemControlling {
 final class FakeSettingsStore: SettingsPersisting {
     // SwiftUI also declares a `Settings` scene; qualify Brim's value type in this file.
     var stored: BrimKit.Settings
+    var hasSavedSettings: Bool
     private(set) var saves: [BrimKit.Settings] = []
 
-    init(_ settings: BrimKit.Settings = BrimKit.Settings()) {
+    init(_ settings: BrimKit.Settings = BrimKit.Settings(), hasSaved: Bool = true) {
         self.stored = settings
+        self.hasSavedSettings = hasSaved
     }
 
     func load() -> BrimKit.Settings { stored }
 
     func save(_ settings: BrimKit.Settings) {
         stored = settings
+        hasSavedSettings = true
         saves.append(settings)
     }
 }
@@ -141,6 +145,8 @@ final class FakePlayerAutomation: PlayerAutomationControlling {
 
     func isPermitted(for player: ScriptablePlayer) -> Bool { permitted }
 
+    func resetReads() { reads.removeAll() }
+
     func snapshot(of player: ScriptablePlayer) -> NowPlaying? {
         reads.append(player)
         return snapshots[player]
@@ -178,11 +184,13 @@ final class FakeNowPlayingService: NowPlayingProviding {
     private(set) var startCount = 0
     private(set) var stopCount = 0
     private(set) var followed: [String?] = []
+    private(set) var panelVisibility: [Bool] = []
     private(set) var commands: [PlayerCommand] = []
     private(set) var seeks: [TimeInterval] = []
 
     func startMonitoring() { startCount += 1 }
     func stopMonitoring() { stopCount += 1 }
+    func setPanelVisible(_ visible: Bool) { panelVisibility.append(visible) }
     func follow(_ sourceID: String?) { followed.append(sourceID) }
     func send(_ command: PlayerCommand) { commands.append(command) }
     func seek(to position: TimeInterval) { seeks.append(position) }
@@ -195,6 +203,8 @@ final class FakeNowPlayingService: NowPlayingProviding {
 
 @MainActor
 final class FakeModule: BrimModule {
+    @Published var liveActivity: LiveActivity?
+    var liveActivityPublisher: AnyPublisher<LiveActivity?, Never> { $liveActivity.eraseToAnyPublisher() }
     let id: String
     let title: String
     let symbolName = "square.dashed"
@@ -220,7 +230,6 @@ final class FakeModule: BrimModule {
         panelActiveHistory.append(active)
     }
 
-    func compactView() -> AnyView { AnyView(EmptyView()) }
     func expandedView() -> AnyView { AnyView(EmptyView()) }
 }
 
@@ -235,6 +244,7 @@ final class FakeMediaControllingModule: BrimModule, MediaModuleControlling {
     var sources: [NowPlayingSource] = [.music]
     private(set) var isEnabled = false
     private(set) var appliedPreferences: [String?] = []
+    private(set) var liveEnabledHistory: [Bool] = []
 
     func setEnabled(_ enabled: Bool) { isEnabled = enabled }
 
@@ -242,7 +252,10 @@ final class FakeMediaControllingModule: BrimModule, MediaModuleControlling {
         appliedPreferences.append(sourceID)
     }
 
-    func compactView() -> AnyView { AnyView(EmptyView()) }
+    func setLiveActivityEnabled(_ enabled: Bool) {
+        liveEnabledHistory.append(enabled)
+    }
+
     func expandedView() -> AnyView { AnyView(EmptyView()) }
 }
 
@@ -292,6 +305,7 @@ final class FakeAgentControllingModule: BrimModule, AgentModuleControlling {
     private(set) var clearFinishedCount = 0
     private(set) var notificationRequests = 0
     private(set) var openedProjects: [AgentSession] = []
+    private(set) var testSessionCount = 0
 
     func setEnabled(_ enabled: Bool) { isEnabled = enabled }
 
@@ -319,18 +333,21 @@ final class FakeAgentControllingModule: BrimModule, AgentModuleControlling {
         return requestResult
     }
 
-    func openProject(_ session: AgentSession) {
+    func open(_ session: AgentSession) {
         openedProjects.append(session)
     }
 
-    func compactView() -> AnyView { AnyView(EmptyView()) }
+    func showTestSession() {
+        testSessionCount += 1
+    }
+
     func expandedView() -> AnyView { AnyView(EmptyView()) }
 }
 
 @MainActor
 final class FakeAgentNotifier: AgentNotifying {
     var authorization: NotificationAuthorization
-    var onOpenProject: ((String) -> Void)?
+    var onOpen: ((AgentOpenTarget) -> Void)?
     private(set) var posted: [AgentNotification] = []
     private(set) var requestCount = 0
     private(set) var refreshCount = 0
@@ -358,11 +375,19 @@ final class FakeAgentNotifier: AgentNotifying {
 @MainActor
 final class FakeWorkspace: WorkspaceOpening {
     var succeeds = true
+    var installedApps: Set<String> = []
     private(set) var openedPaths: [String] = []
+    private(set) var activatedApps: [String] = []
 
     func openDirectory(_ path: String) -> Bool {
         openedPaths.append(path)
         return succeeds
+    }
+
+    func activateApplication(bundleIdentifier: String) -> Bool {
+        guard installedApps.contains(bundleIdentifier) else { return false }
+        activatedApps.append(bundleIdentifier)
+        return true
     }
 }
 
@@ -383,5 +408,28 @@ final class FakeAgentAlertPresenter: AgentAlertPresenting {
 
     func openLatest() {
         onOpen?()
+    }
+}
+
+@MainActor
+final class FakeClaudeHook: ClaudeHookInstalling {
+    var status: ClaudeHookStatus = .notInstalled
+    var failure: ClaudeHookError?
+    private(set) var installCount = 0
+    private(set) var uninstallCount = 0
+    private(set) var refreshCount = 0
+
+    func refresh() { refreshCount += 1 }
+
+    func install() throws {
+        installCount += 1
+        if let failure { throw failure }
+        status = .installed
+    }
+
+    func uninstall() throws {
+        uninstallCount += 1
+        if let failure { throw failure }
+        status = .notInstalled
     }
 }

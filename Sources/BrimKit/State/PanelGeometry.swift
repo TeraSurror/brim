@@ -3,35 +3,47 @@ import Foundation
 
 /// Sizes for every panel state. Kept as a value type so tests can use recorded screen data and a custom layout.
 public struct PanelMetrics: Equatable, Sendable {
-    /// Height of the strip shown on the first hover.
-    public var peekHeight: CGFloat
     public var expandedWidth: CGFloat
     public var expandedHeight: CGFloat
-    /// The peek is never narrower than this, even on a display with a very narrow notch.
-    public var minimumPeekWidth: CGFloat
-    /// Space added on each side of the notch in the peek so the panel reads as wider than the notch.
-    public var peekNotchPadding: CGFloat
+    /// Width added on each side of the hardware notch while a module shows live content.
+    public var liveEarWidth: CGFloat
+    /// The live pill on a display without a notch.
+    public var livePillSize: CGSize
     /// The visible handle on displays without a notch.
     public var handleSize: CGSize
     /// Keeps an expanded panel off the screen edges.
     public var screenMargin: CGFloat
 
     public init(
-        peekHeight: CGFloat = 84,
         expandedWidth: CGFloat = 600,
         expandedHeight: CGFloat = 320,
-        minimumPeekWidth: CGFloat = 360,
-        peekNotchPadding: CGFloat = 48,
+        liveEarWidth: CGFloat = 40,
+        livePillSize: CGSize = CGSize(width: 150, height: 24),
         handleSize: CGSize = CGSize(width: 148, height: 10),
         screenMargin: CGFloat = 16
     ) {
-        self.peekHeight = peekHeight
         self.expandedWidth = expandedWidth
         self.expandedHeight = expandedHeight
-        self.minimumPeekWidth = minimumPeekWidth
-        self.peekNotchPadding = peekNotchPadding
+        self.liveEarWidth = liveEarWidth
+        self.livePillSize = livePillSize
         self.handleSize = handleSize
         self.screenMargin = screenMargin
+    }
+
+    /// Module cards get a fixed share each, so adding a module widens the panel instead of squeezing every card.
+    public static let moduleCardWidth: CGFloat = 290
+    public static let moduleSpacing: CGFloat = 14
+    public static let panelHorizontalPadding: CGFloat = 18
+    public static let minimumExpandedWidth: CGFloat = 460
+
+    public static func expandedWidth(forModuleCount count: Int) -> CGFloat {
+        let count = max(1, count)
+        let cards = CGFloat(count) * moduleCardWidth + CGFloat(count - 1) * moduleSpacing
+        return max(minimumExpandedWidth, cards + panelHorizontalPadding * 2)
+    }
+
+    public init(moduleCount: Int) {
+        self.init(expandedWidth: Self.expandedWidth(forModuleCount: moduleCount))
     }
 }
 
@@ -59,22 +71,27 @@ public struct PanelGeometry: Equatable, Sendable {
         )
     }
 
-    public var peekWidth: CGFloat {
-        let notchWidth = screen.notchRect?.width ?? 0
-        let desired = max(metrics.minimumPeekWidth, notchWidth + metrics.peekNotchPadding * 2)
-        return min(desired, availableWidth)
+    /// The notch with an ear on each side, or a small pill at the top center of a display without a notch.
+    public var liveFrame: CGRect {
+        if let notch = screen.notchRect {
+            let ears = notch.insetBy(dx: -metrics.liveEarWidth, dy: 0)
+            let width = min(ears.width, availableWidth)
+            return CGRect(x: notch.midX - width / 2, y: notch.minY, width: width, height: notch.height)
+        }
+        return topAnchored(
+            width: min(metrics.livePillSize.width, availableWidth),
+            height: metrics.livePillSize.height
+        )
     }
 
     public var expandedPanelWidth: CGFloat {
         min(metrics.expandedWidth, availableWidth)
     }
 
-    public func frame(for state: PanelState) -> CGRect {
+    public func frame(for state: PanelState, live: Bool = false) -> CGRect {
         switch state {
         case .collapsed:
-            return collapsedFrame
-        case .peek:
-            return topAnchored(width: peekWidth, height: metrics.peekHeight)
+            return live ? liveFrame : collapsedFrame
         case .expanded:
             return topAnchored(width: expandedPanelWidth, height: metrics.expandedHeight)
         }
@@ -82,12 +99,12 @@ public struct PanelGeometry: Equatable, Sendable {
 
     /// The area that keeps a state open. The exit area is deliberately bigger than the entry area so a
     /// pointer that brushes the edge on the way to the menu bar does not make the panel flicker.
-    public func hitRect(for state: PanelState, slop: CGFloat) -> CGRect {
-        frame(for: state).insetBy(dx: -slop, dy: -slop)
+    public func hitRect(for state: PanelState, live: Bool = false, slop: CGFloat) -> CGRect {
+        frame(for: state, live: live).insetBy(dx: -slop, dy: -slop)
     }
 
-    public func contains(_ point: CGPoint, in state: PanelState, slop: CGFloat = 0) -> Bool {
-        hitRect(for: state, slop: slop).contains(point)
+    public func contains(_ point: CGPoint, in state: PanelState, live: Bool = false, slop: CGFloat = 0) -> Bool {
+        hitRect(for: state, live: live, slop: slop).contains(point)
     }
 
     private var availableWidth: CGFloat {
@@ -106,26 +123,26 @@ public struct PanelGeometry: Equatable, Sendable {
     }
 }
 
-/// User-tunable hover/collapse timing plus internal tolerances.
+/// User-tunable open/collapse behaviour plus internal tolerances.
 public struct PanelTimings: Equatable, Sendable {
-    /// Delay before the peek appears (Settings → hover delay).
+    /// Delay before resting on the notch opens the panel (Settings → hover delay).
     public var hoverDelay: TimeInterval
-    /// How long the peek must stay up before it grows on its own. Clicking skips this.
-    public var expandDelay: TimeInterval
     /// Delay before collapsing after the pointer leaves (Settings → collapse delay).
     public var collapseDelay: TimeInterval
+    /// False means only a click opens the panel; hovering does nothing.
+    public var opensOnHover: Bool
     /// Extra room around the expanded panel before it counts as "left".
     public var exitSlop: CGFloat
 
     public init(
         hoverDelay: TimeInterval = 0.15,
-        expandDelay: TimeInterval = 0.7,
         collapseDelay: TimeInterval = 0.4,
+        opensOnHover: Bool = true,
         exitSlop: CGFloat = 12
     ) {
         self.hoverDelay = hoverDelay
-        self.expandDelay = expandDelay
         self.collapseDelay = collapseDelay
+        self.opensOnHover = opensOnHover
         self.exitSlop = exitSlop
     }
 }

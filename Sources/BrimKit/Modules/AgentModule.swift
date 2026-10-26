@@ -16,7 +16,9 @@ public protocol AgentModuleControlling: AnyObject {
     func setNotificationsEnabled(_ enabled: Bool)
     func refreshNotificationAuthorization() async
     func requestNotificationAuthorization() async -> NotificationAuthorization
-    func openProject(_ session: AgentSession)
+    func open(_ session: AgentSession)
+    /// Adds a sample waiting session, so the user can check the panel and alerts without a real agent.
+    func showTestSession()
 }
 
 /// Shows what local AI tools are doing. The module owns the socket listener, but all aggregation is in the
@@ -31,7 +33,10 @@ public final class AgentModule: BrimModule, AgentModuleControlling, ObservableOb
     public let requiredPermissions: [PermissionKind] = []
     public let permissionExplanation = ""
 
-    @Published public private(set) var sessions: [AgentSession] = []
+    @Published public private(set) var sessions: [AgentSession] = [] {
+        didSet { updateLiveActivity() }
+    }
+    @Published public private(set) var liveActivity: LiveActivity?
     @Published public private(set) var isListening = false
     @Published public private(set) var notificationAuthorization: NotificationAuthorization = .notDetermined
     public private(set) var isEnabled = false
@@ -52,6 +57,8 @@ public final class AgentModule: BrimModule, AgentModuleControlling, ObservableOb
     private var roster: AgentRoster
     private var finishedRetention: TimeInterval
     private var panelActive = false
+    /// Failed sessions the user has seen in the open panel. They stay listed but stop lighting the notch.
+    private var acknowledgedErrors: Set<String> = []
 
     public init(
         listener: AgentEventListening? = nil,
@@ -77,8 +84,8 @@ public final class AgentModule: BrimModule, AgentModuleControlling, ObservableOb
         self.listener.onEvent = { [weak self] event in
             self?.ingest(event)
         }
-        self.notifier.onOpenProject = { [weak self] path in
-            self?.openProject(at: path)
+        self.notifier.onOpen = { [weak self] target in
+            self?.open(target)
         }
     }
 
@@ -108,15 +115,54 @@ public final class AgentModule: BrimModule, AgentModuleControlling, ObservableOb
     public func setPanelActive(_ active: Bool) {
         panelActive = active
         guard active, isEnabled else { return }
+        // The open panel shows the same session, and the alert would sit on top of it.
+        alertPresenter?.dismiss()
         let before = roster.sessions
         roster.prune(now: now(), finishedRetention: finishedRetention)
         if roster.sessions != before {
             sessions = roster.sessions
         }
+        acknowledgedErrors.formUnion(sessions.filter { $0.status == .error }.map(\.id))
+        updateLiveActivity()
     }
 
-    public func compactView() -> AnyView {
-        AnyView(AgentCompactView(module: self))
+    public var liveActivityPublisher: AnyPublisher<LiveActivity?, Never> {
+        $liveActivity.eraseToAnyPublisher()
+    }
+
+    public func liveView(_ edge: LiveActivityEdge) -> AnyView {
+        AnyView(AgentLiveView(module: self, edge: edge))
+    }
+
+    /// The status the live notch shows: waiting first, then a failure the user has not seen, then working.
+    /// Finished sessions never light the notch.
+    public var liveStatus: AgentStatus? {
+        if sessions.contains(where: { $0.status == .waiting }) { return .waiting }
+        if sessions.contains(where: { $0.status == .error && !acknowledgedErrors.contains($0.id) }) {
+            return .error
+        }
+        if sessions.contains(where: { $0.status == .working }) { return .working }
+        return nil
+    }
+
+    /// How many sessions share `liveStatus`, for the count in the right ear.
+    public var liveCount: Int {
+        guard let status = liveStatus else { return 0 }
+        return sessions.filter {
+            $0.status == status && !(status == .error && acknowledgedErrors.contains($0.id))
+        }.count
+    }
+
+    private func updateLiveActivity() {
+        // An acknowledgement lasts only while the session stays failed; failing again later lights it again.
+        acknowledgedErrors.formIntersection(sessions.filter { $0.status == .error }.map(\.id))
+        let next: LiveActivity?
+        switch liveStatus {
+        case .waiting, .error: next = LiveActivity(priority: .attention)
+        case .working: next = LiveActivity(priority: .ambient)
+        case .done, nil: next = nil
+        }
+        if next != liveActivity { liveActivity = next }
     }
 
     public func expandedView() -> AnyView {
@@ -197,14 +243,27 @@ public final class AgentModule: BrimModule, AgentModuleControlling, ObservableOb
         return status
     }
 
-    public func openProject(_ session: AgentSession) {
-        guard let cwd = session.cwd, !cwd.isEmpty else { return }
-        openProject(at: cwd)
+    public func showTestSession() {
+        guard let event = AgentEvent(
+            agentID: "brim",
+            sessionID: "test",
+            status: .waiting,
+            title: "Test session",
+            detail: "Agent Status works. Dismiss this row when you're done.",
+            timestamp: now()
+        ) else { return }
+        ingest(event)
     }
 
-    private func openProject(at path: String) {
-        guard !path.isEmpty else { return }
-        _ = workspace.openDirectory(path)
+    /// Takes the user back to a session: the app running it when known and installed, otherwise its
+    /// project folder in Finder.
+    public func open(_ session: AgentSession) {
+        open(session.openTarget)
+    }
+
+    private func open(_ target: AgentOpenTarget) {
+        if let app = target.app, workspace.activateApplication(bundleIdentifier: app) { return }
+        if let cwd = target.cwd { _ = workspace.openDirectory(cwd) }
     }
 
     private func maybeNotify(_ session: AgentSession, previousStatus: AgentStatus?) {
@@ -221,7 +280,7 @@ public final class AgentModule: BrimModule, AgentModuleControlling, ObservableOb
             // Ad-hoc dev builds cannot get a notification permission prompt; the notch alert keeps the
             // opt-in feature working and matches the panel's visual language.
             alertPresenter?.present(notification) { [weak self] in
-                self?.openProject(at: notification.cwd ?? "")
+                self?.open(notification.target)
             }
         }
     }

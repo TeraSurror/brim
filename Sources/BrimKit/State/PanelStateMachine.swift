@@ -16,11 +16,14 @@ public final class PanelStateMachine {
         }
     }
 
+    /// True while the collapsed notch is widened by live content. The ears are part of the hover target.
+    /// Changing it never opens the panel by itself: ears appearing under a resting pointer are not a hover.
+    public var isLive: Bool = false
+
     private let scheduler: Scheduling
     private let geometry: PanelGeometry
     private var lastPoint: CGPoint?
-    private var peekTask: TaskHandle?
-    private var expandTask: TaskHandle?
+    private var openTask: TaskHandle?
     private var collapseTask: TaskHandle?
 
     public init(
@@ -43,18 +46,10 @@ public final class PanelStateMachine {
 
         switch state {
         case .collapsed:
-            if geometry.contains(point, in: .collapsed, slop: 1) {
-                schedulePeek()
+            if timings.opensOnHover, isOverCollapsed(point) {
+                scheduleOpen()
             } else {
-                cancelPeek()
-            }
-        case .peek:
-            if geometry.contains(point, in: .peek) {
-                cancelCollapse()
-                scheduleExpansion()
-            } else {
-                cancelExpansion()
-                scheduleCollapse()
+                cancelOpen()
             }
         case .expanded:
             if geometry.contains(point, in: .expanded, slop: timings.exitSlop) {
@@ -65,68 +60,48 @@ public final class PanelStateMachine {
         }
     }
 
-    /// A click on the notch or peek opens the full panel immediately; the spec gives clicking priority over
-    /// waiting for the longer hover.
+    /// A click on the notch opens the panel immediately, in both hover and click-only mode.
     public func clicked(at point: CGPoint) {
         guard isEnabled else { return }
         lastPoint = point
-        switch state {
-        case .collapsed where geometry.contains(point, in: .collapsed, slop: 1):
+        if state == .collapsed, isOverCollapsed(point) {
             expandNow()
-        case .peek where geometry.contains(point, in: .peek):
-            expandNow()
-        case .expanded:
-            break
-        default:
-            break
         }
     }
 
     /// Used by the window layer when a screen goes away or the app updates its geometry.
     public func collapseNow() {
-        cancelPeek()
-        cancelExpansion()
+        cancelOpen()
         cancelCollapse()
         transition(to: .collapsed)
     }
 
     public func update(timings: PanelTimings) {
         self.timings = timings
+        if !timings.opensOnHover { cancelOpen() }
+    }
+
+    private func isOverCollapsed(_ point: CGPoint) -> Bool {
+        geometry.contains(point, in: .collapsed, live: isLive, slop: 1)
     }
 
     // MARK: - Timers
 
-    private func schedulePeek() {
-        guard peekTask == nil else { return }
-        peekTask = scheduler.schedule(after: timings.hoverDelay) { [weak self] in
-            self?.peekFired()
+    private func scheduleOpen() {
+        guard openTask == nil else { return }
+        openTask = scheduler.schedule(after: timings.hoverDelay) { [weak self] in
+            self?.openFired()
         }
     }
 
-    private func peekFired() {
-        peekTask = nil
-        guard isEnabled, let point = lastPoint, geometry.contains(point, in: .collapsed, slop: 1) else { return }
-        Log.state.debug("peek")
-        transition(to: .peek)
-        scheduleExpansion()
-    }
-
-    private func scheduleExpansion() {
-        guard expandTask == nil else { return }
-        expandTask = scheduler.schedule(after: timings.expandDelay) { [weak self] in
-            self?.expandFired()
-        }
-    }
-
-    private func expandFired() {
-        expandTask = nil
-        guard isEnabled, let point = lastPoint, geometry.contains(point, in: .peek) else { return }
+    private func openFired() {
+        openTask = nil
+        guard isEnabled, timings.opensOnHover, let point = lastPoint, isOverCollapsed(point) else { return }
         expandNow()
     }
 
     private func expandNow() {
-        cancelPeek()
-        cancelExpansion()
+        cancelOpen()
         cancelCollapse()
         guard state != .expanded else { return }
         Log.state.debug("expanded")
@@ -145,28 +120,17 @@ public final class PanelStateMachine {
         guard isEnabled else { return }
         // A late move back into the panel cancels the timer, but double-check the last known point in case
         // the pointer left and no move event arrived at the boundary.
-        if let point = lastPoint {
-            switch state {
-            case .peek where geometry.contains(point, in: .peek):
-                return
-            case .expanded where geometry.contains(point, in: .expanded, slop: timings.exitSlop):
-                return
-            default:
-                break
-            }
+        if let point = lastPoint, state == .expanded,
+           geometry.contains(point, in: .expanded, slop: timings.exitSlop) {
+            return
         }
         Log.state.debug("collapsed")
         transition(to: .collapsed)
     }
 
-    private func cancelPeek() {
-        peekTask?.cancel()
-        peekTask = nil
-    }
-
-    private func cancelExpansion() {
-        expandTask?.cancel()
-        expandTask = nil
+    private func cancelOpen() {
+        openTask?.cancel()
+        openTask = nil
     }
 
     private func cancelCollapse() {

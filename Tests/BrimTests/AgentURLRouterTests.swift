@@ -30,6 +30,14 @@ final class AgentURLRouterTests: XCTestCase {
         XCTAssertEqual(event.timestamp, now)
     }
 
+    func testAcceptsAnAppBundleIdentifier() throws {
+        let result = try XCTUnwrap(command(
+            "brim://agent?agent=claude-code&session=abc&status=waiting&app=com.apple.Terminal"
+        ))
+        guard case .event(let event) = result else { return XCTFail("Expected an event") }
+        XCTAssertEqual(event.app, "com.apple.Terminal")
+    }
+
     func testStatusIsCaseInsensitive() throws {
         let result = try XCTUnwrap(command("brim://agent?agent=codex&session=s&status=WORKING"))
         guard case .event(let event) = result else {

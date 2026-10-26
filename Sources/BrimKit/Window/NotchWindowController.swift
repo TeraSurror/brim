@@ -6,13 +6,14 @@ import SwiftUI
 /// panel, so anything outside it falls through to the menu bar or the app below.
 ///
 /// Animation is split in two: the window frame changes over a short ease-out, while the SwiftUI layout
-/// changes are sequenced (peek first, expanded content once the window is nearly grown). This avoids the
-/// content reflowing while its window is still changing size.
+/// fades in once the window is nearly grown. This avoids the content reflowing while its window is still
+/// changing size. With Reduce Motion on, the window jumps to its new size and cross-fades instead.
 @MainActor
 final class NotchWindowController {
     private static let collapseDuration: TimeInterval = 0.24
-    private static let peekDuration: TimeInterval = 0.24
-    private static let expandDuration: TimeInterval = 0.36
+    private static let expandDuration: TimeInterval = 0.34
+    private static let liveDuration: TimeInterval = 0.28
+    private static let fadeDuration: TimeInterval = 0.16
 
     let screenID: String
     private let window: NotchWindow
@@ -32,14 +33,16 @@ final class NotchWindowController {
         model: AppModel,
         metrics: PanelMetrics,
         timings: PanelTimings,
+        isLive: Bool,
         scheduler: Scheduling,
         onActiveChange: @escaping (Bool) -> Void
     ) {
         let geometry = PanelGeometry(screen: screen, metrics: metrics)
-        let panelState = PanelStateModel()
+        let panelState = PanelStateModel(showsLiveShape: isLive, showsLiveContent: isLive)
         let machine = PanelStateMachine(
             screen: screen, metrics: metrics, timings: timings, scheduler: scheduler)
-        let collapsed = geometry.frame(for: .collapsed)
+        machine.isLive = isLive
+        let collapsed = geometry.frame(for: .collapsed, live: isLive)
         let window = NotchWindow(frame: Self.appKitFrame(for: collapsed))
 
         let root = PanelView(
@@ -47,7 +50,8 @@ final class NotchWindowController {
             panel: panelState,
             isNotched: geometry.isNotched,
             topInset: screen.topInset,
-            peekSize: geometry.frame(for: .peek).size,
+            liveSize: geometry.liveFrame.size,
+            earWidth: metrics.liveEarWidth,
             expandedSize: geometry.frame(for: .expanded).size,
             openSettings: { model.openSettings() },
             quit: { model.quit() }
@@ -64,11 +68,7 @@ final class NotchWindowController {
         self.scheduler = scheduler
         self.onActiveChange = onActiveChange
 
-        // A notched screen's collapsed window is invisible and sits right over the notch; letting it take
-        // mouse events would steal clicks from the menu bar. The global pointer monitor still sees hovers.
-        // Alpha 0 also guarantees no stray shadow or background pixel can show around the notch.
-        window.ignoresMouseEvents = geometry.isNotched
-        window.alphaValue = geometry.isNotched ? 0 : 1
+        applyCollapsedWindowState()
 
         machine.onStateChange = { [weak self] state in
             self?.transition(to: state)
@@ -82,8 +82,9 @@ final class NotchWindowController {
             let point = Self.cgPoint(from: NSEvent.mouseLocation)
             // Resizing the window under a still pointer can look like an exit to a tracking area.
             // Only forward a real exit.
-            let slop = self.panelState.state == .expanded ? self.machine.timings.exitSlop : 1
-            guard !self.geometry.contains(point, in: self.panelState.state, slop: slop) else { return }
+            let state = self.machine.state
+            let slop = state == .expanded ? self.machine.timings.exitSlop : 1
+            guard !self.geometry.contains(point, in: state, live: self.machine.isLive, slop: slop) else { return }
             self.machine.pointerMoved(to: point)
         }
         window.orderFrontRegardless()
@@ -103,6 +104,40 @@ final class NotchWindowController {
         machine.update(timings: timings)
     }
 
+    /// Grows the collapsed notch into its ears, or retracts them. An open panel just remembers the value and
+    /// collapses to the right frame later.
+    func setLive(_ live: Bool) {
+        guard live != machine.isLive else { return }
+        machine.isLive = live
+        guard machine.state == .collapsed else { return }
+        if panelState.state != .collapsed {
+            // Still retracting from the open panel: restart the collapse toward the new frame so its
+            // finishing step (and the inactive report) is not lost.
+            transition(to: .collapsed)
+            return
+        }
+
+        generation += 1
+        let generation = self.generation
+        cancelPendingTasks()
+
+        if live {
+            panelState.showsLiveShape = true
+            panelState.showsLiveContent = true
+            applyCollapsedWindowState()
+            animateFrame(to: geometry.liveFrame, duration: Self.liveDuration)
+        } else {
+            // Fade the ear content, then let the black shape shrink back into the hardware notch.
+            panelState.showsLiveContent = false
+            animateFrame(to: geometry.collapsedFrame, duration: Self.liveDuration)
+            schedule(after: Self.liveDuration, generation: generation) { [weak self] in
+                guard let self, self.machine.state == .collapsed, !self.machine.isLive else { return }
+                self.panelState.showsLiveShape = false
+                self.applyCollapsedWindowState()
+            }
+        }
+    }
+
     func close() {
         cancelPendingTasks()
         reportActive(false)
@@ -112,6 +147,10 @@ final class NotchWindowController {
 
     // MARK: - Visual transitions
 
+    private var reduceMotion: Bool {
+        NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+    }
+
     private func transition(to state: PanelState) {
         generation += 1
         let generation = self.generation
@@ -120,73 +159,76 @@ final class NotchWindowController {
         switch state {
         case .collapsed:
             collapse(generation: generation)
-        case .peek:
-            peek(generation: generation)
         case .expanded:
             expand(generation: generation)
         }
     }
 
-    private func collapse(generation: Int) {
-        panelState.content = .collapsed
-        // Keep `panelState.state` at peek/expanded while the window retracts, so the black shape is visible
-        // shrinking into the notch rather than blinking out before the window moves.
-        window.ignoresMouseEvents = true
-        animateFrame(to: geometry.frame(for: .collapsed), duration: Self.collapseDuration)
+    /// Visible and clickable whenever something is drawn: the handle on a plain screen or the live ears.
+    /// The bare notch is invisible and lets clicks through, because the menu bar sits right beside it.
+    private func applyCollapsedWindowState() {
+        let visible = !geometry.isNotched || machine.isLive
+        window.alphaValue = visible ? 1 : 0
+        window.ignoresMouseEvents = !visible
+    }
 
-        schedule(after: Self.collapseDuration, generation: generation) { [weak self] in
+    private func collapse(generation: Int) {
+        let target = geometry.frame(for: .collapsed, live: machine.isLive)
+        panelState.content = .collapsed
+        window.ignoresMouseEvents = true
+
+        let finish: () -> Void = { [weak self] in
             guard let self, self.machine.state == .collapsed else { return }
             self.panelState.state = .collapsed
-            self.window.alphaValue = self.geometry.isNotched ? 0 : 1
-            self.window.ignoresMouseEvents = self.geometry.isNotched
+            self.panelState.showsLiveShape = self.machine.isLive
+            self.panelState.showsLiveContent = self.machine.isLive
+            self.applyCollapsedWindowState()
             // The panel is no longer visible; modules can stop their monitors now.
             self.reportActive(false)
         }
-    }
 
-    private func peek(generation: Int) {
-        panelState.state = .peek
-        reportActive(true)
-        window.alphaValue = 1
-        window.ignoresMouseEvents = false
-        animateFrame(to: geometry.frame(for: .peek), duration: Self.peekDuration)
-
-        if panelState.content == .expanded {
-            panelState.content = .peek
-        } else if panelState.content == .collapsed {
-            // Let the strip grow a little before the compact content fades in.
-            schedule(after: 0.07, generation: generation) { [weak self] in
-                guard let self, self.machine.state == .peek else { return }
-                self.panelState.content = .peek
+        if reduceMotion {
+            fade(to: 0) { [weak self] in
+                guard let self, self.generation == generation else { return }
+                self.window.setFrame(Self.appKitFrame(for: target), display: true)
+                finish()
             }
+            return
         }
+
+        // Keep `panelState.state` expanded while the window retracts, so the black shape is visible
+        // shrinking into the notch rather than blinking out before the window moves.
+        animateFrame(to: target, duration: Self.collapseDuration)
+        schedule(after: Self.collapseDuration, generation: generation, finish)
     }
 
     private func expand(generation: Int) {
         panelState.state = .expanded
         reportActive(true)
-        window.alphaValue = 1
         window.ignoresMouseEvents = false
-        animateFrame(to: geometry.frame(for: .expanded), duration: Self.expandDuration)
+        NSHapticFeedbackManager.defaultPerformer.perform(.generic, performanceTime: .now)
 
-        if panelState.content == .collapsed {
-            // A click can jump straight from the notch to the full panel. Show the compact content while
-            // the window grows, then hand over to the expanded layout near the end.
-            schedule(after: 0.07, generation: generation) { [weak self] in
-                guard let self, self.machine.state == .expanded else { return }
-                self.panelState.content = .peek
-            }
+        let target = geometry.frame(for: .expanded)
+        if reduceMotion {
+            window.alphaValue = 0
+            window.setFrame(Self.appKitFrame(for: target), display: true)
+            panelState.content = .expanded
+            fade(to: 1)
+            return
         }
+
+        window.alphaValue = 1
+        animateFrame(to: target, duration: Self.expandDuration)
         if panelState.content != .expanded {
-            schedule(after: 0.26, generation: generation) { [weak self] in
+            schedule(after: 0.2, generation: generation) { [weak self] in
                 guard let self, self.machine.state == .expanded else { return }
                 self.panelState.content = .expanded
             }
         }
     }
 
-    /// Collapses duplicate reports. The panel is active from the first peek until the collapse animation
-    /// has finished, so the media helper is never stopped while its artwork is still on screen.
+    /// Collapses duplicate reports. The panel is active from the moment it starts opening until the collapse
+    /// animation has finished, so modules never tear down content that is still on screen.
     private func reportActive(_ active: Bool) {
         guard active != reportedActive else { return }
         reportedActive = active
@@ -225,6 +267,15 @@ final class NotchWindowController {
         Log.window.debug(
             "Frame \(Int(cgFrame.width), privacy: .public)×\(Int(cgFrame.height), privacy: .public) on \(self.screenID, privacy: .public)"
         )
+    }
+
+    private func fade(to alpha: CGFloat, completion: (@MainActor () -> Void)? = nil) {
+        NSAnimationContext.runAnimationGroup { context in
+            context.duration = Self.fadeDuration
+            window.animator().alphaValue = alpha
+        } completionHandler: {
+            MainActor.assumeIsolated { completion?() }
+        }
     }
 
     /// Converts a CoreGraphics global rect (top-left origin) to AppKit's bottom-left primary screen space.

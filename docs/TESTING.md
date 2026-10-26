@@ -232,13 +232,76 @@ macOS may then show a notification prompt on a signed build.
 | F8 | Quit and relaunch. | Schema is 4; the alert setting and retention survive. |
 | Perf | Leave Brim collapsed after alerts. | Under 0.5% CPU and under 80 MB; the alert window is destroyed after dismissal. |
 
+## UX revision manual verification — live notch (F9–F13)
+
+The UX revision replaces the hover peek with a live notch. Rows above that mention the peek (F2, F3, F4, F6) are
+superseded by the F9/F10 rows here. Run these on the notched MacBook with and without an external display, in light and
+dark mode, and once over a full-screen app.
+
+| Feature | Check | Expected |
+| --- | --- | --- |
+| F9 | Rest the pointer on the bare notch. | After the hover delay (150 ms) the full panel grows straight out of the notch; there is no intermediate strip. A Force Touch trackpad gives a light tap. |
+| F9 | Settings → General → Open the panel → On click. Hover the notch, then click it. | Hovering does nothing; the click opens the panel. The hover-delay slider is disabled. Switch back to On hover. |
+| F9 | Move the pointer along the menu bar across the notch without stopping. | The panel does not open. |
+| F9 | System Settings → Accessibility → Display → Reduce motion on. Open and close the panel. | The panel fades in and out at full size instead of growing; no sliding content. Turn it off again. |
+| F10 | Play a YouTube video in a browser (or Spotify/Music) with the panel closed. | Within a second the notch widens by an ear on each side: artwork on the left, an animated waveform on the right. Nothing else changes in the menu bar. |
+| F10 | Pause playback. | The ears stay for about 3 seconds, then retract into the notch and the notch is invisible again. Resuming within 3 seconds keeps them without a flicker; skipping tracks never flickers. |
+| F10 | Hover the left ear (outside the hardware notch), then click it. | Hovering opens the panel; a click opens it immediately. The click never reaches the menu bar item underneath. |
+| F10 | Move the pointer next to the notch, then start playback so the ears appear under the pointer. | The panel does not open by itself; it opens only when the pointer moves or clicks. |
+| F10 | With media playing, send a `waiting` agent event (socket example above). | The ears switch to an orange glyph (and a count when several sessions wait). Send `working`: media takes the ears back. With nothing playing, a `working` agent shows a quiet pulsing glyph. |
+| F10 | Send an `error` event, open the panel, close it. | The red glyph lights the notch until the panel is opened; afterwards the row is still listed but the notch is bare (or shows media). |
+| F10 | On a display without a notch, play media. | The slim handle becomes a small black pill at the top center with the same artwork and waveform. |
+| F10 | Settings → General → turn off "Show activity beside the notch". | The ears disappear immediately. About a second later `pgrep -f brim-media-supervisor` finds nothing while the panel is closed. Turn it back on: the helper restarts and the ears return while media plays. |
+| F10 | Leave media playing and the panel closed for 10 minutes. Check Activity Monitor. | Brim plus its `perl` helper stay under 0.5% CPU and 80 MB combined. |
+| F10 | `pkill -f mediaremote-adapter` while Now Playing is enabled. | The ears disappear; the helper is back within about 5 seconds and the ears return. |
+| F11 | Enable alerts, close the panel, move the pointer to the external display and send a `waiting` event with `app` set to your terminal's bundle ID. | A black card drops from the top edge of the external display (not under the MacBook notch), titled “… needs your input”. |
+| F11 | Hover the card for 10 seconds, then move off it. | It stays while hovered and closes about 3 seconds after the pointer leaves. |
+| F11 | Click anywhere on the card (not the ✕). | The terminal comes to the front and the card closes. Without `app`, Finder opens `cwd`. |
+| F11 | Send `waiting`, then open the panel while the card is visible. | The card disappears as the panel opens; nothing overlaps the panel. |
+| F11 | Look at an agent row with `app` set, and one with only `cwd`. | The first shows an "open app" arrow, the second a folder; rows with neither have no open button. |
+| F11 | Run a real Claude Code session in Terminal, iTerm or VS Code after connecting the hook (F12). | Rows are titled with the project folder, the detail names the running tool ("Running Bash"), and the open action switches to that terminal/editor. |
+| F12 | Quit Brim, move `~/Library/Application Support/Brim/settings.json` aside, launch Brim. | Settings opens on General with a "Brim lives in your notch" note; Now Playing and Clock are enabled. Restore your file afterwards. |
+| F12 | With Brim running, double-click `build/Brim.app` (or Spotlight → Brim). | Settings comes to the front. |
+| F12 | Settings → Modules: turn Now Playing off and on. | No explanation sheet and no macOS prompt. |
+| F12 | Without Automation granted, pick Spotify or Music in the panel's source menu. | Settings opens on the Media tab, which explains Automation and offers Grant Automation…. |
+| F12 | Settings → Agents → Claude Code. With the old manual hook installed, the status reads "Connected with an older hook". Press Update…, read the explanation, confirm. | `~/.claude/settings.json.brim-backup-<time>` exists, other hooks are untouched, `~/.brim/claude-hook.sh` contains `brim-hook-version: 2`, and the status reads Connected. |
+| F12 | Break `~/.claude/settings.json` (invalid JSON) and reopen the Agents tab. | Status says the file isn't valid JSON; Connect is not offered and the file is not modified. Restore it. |
+| F12 | Settings → Agents → Show a Test Session (Agent Status on). | A "Brim · Test session" row waits in the panel and the notch shows the orange glyph; with alerts on and the panel closed, the card appears. |
+| F12 | Walk all five tabs with the keyboard only. | Every control is reachable; the Media and Agents tabs offer "Turn On …" when their module is off. |
+| F13 | Enable one, two and three modules and open the panel each time. | 460, 630 and 934 pt wide; the cards keep the same width and the panel stays centered on the notch. |
+| F13 | Use a 12-hour clock (System Settings → General → Date & Time). | "10:45 PM" stays on one line in the clock card at every module count. |
+| F13 | With Now Playing and Clock enabled, look at the media card. | The full layout: 96 pt artwork, title, artist, album and "Playing in …". The source menu is an icon with a chevron. |
+
+### Verified by the agent (2026-10-25)
+
+Against the debug build on macOS 26.6.2 with a YouTube video playing in Brave and this Claude Code session reporting
+`working` through the old hook:
+
+- Collapsed with media playing: windows were `259×32` at the 179×32 notch (two 40 pt ears) and a `150×24` pill on the
+  external display, both alpha 1. The accessibility tree read the track title, artist and "playing", with the source
+  as "from Browser". That led to named entries for Brave, Arc, Firefox, Opera and Vivaldi (unit tested, not re-run).
+- Hover warp onto the notch opened `934×320` (three modules); moving away collapsed back to `259×32`.
+- A `waiting` socket event with `app` switched the ears to "Agent: Needs input" and dropped a `360×64` card at
+  `(780, 0)` on the screen under the pointer; `working` handed the ears back to media; the card closed on its own.
+- Opening Brim again showed the Settings window with General/Media/Agents/Modules/About tabs and the open-mode radio
+  group. Copy Diagnostics reported `live notch: on, showing media` and `Claude Code hook: outdated`.
+- The installed hook script, run against a scratch socket, sent `title` = project folder, `detail` = "Running Bash" and
+  `app` = `com.apple.Terminal`, and exited 0 with no listener.
+- Quitting removed the helper and the socket. The user's settings file was restored afterwards.
+
+Not verified here: real clicks on the ears and the alert card, haptics, Reduce Motion, full-screen apps and the Claude
+Code Update… button (it edits `~/.claude/settings.json`, so it was left for the user).
+
 ## Notched vs non-notched geometry
 
 - Notched screen: the collapsed window must equal the hardware notch (recorded 179×32 on the development machine).
-  Hovering anywhere in that rectangle should peek; clicks in it should expand without activating Brim.
-- Non-notched screen: the collapsed window is a 148×10 handle at the top center. It is intentionally interactive, so it
-  can receive the click that opens the panel; everything outside its 148×10 rectangle passes through.
-- Expanded panel: 600×320, clamped to the screen's width and centered on the screen (not on the notch width).
+  Hovering anywhere in that rectangle opens the panel; clicks in it open it without activating Brim.
+- Live notch: the notch plus a 40 pt ear on each side (259×32 on the development machine), visible and clickable so a
+  click on an ear never reaches the menu bar below.
+- Non-notched screen: the collapsed window is a 148×10 handle at the top center, or a 150×24 pill while something is
+  live. It is intentionally interactive; everything outside it passes through.
+- Expanded panel: 290 pt per module card plus spacing and padding (at least 460 pt), 320 tall, clamped to the screen's
+  width and centered on the screen.
 
 ## Known limitations and notes for M1
 

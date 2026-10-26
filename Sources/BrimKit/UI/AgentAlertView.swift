@@ -1,12 +1,16 @@
 import SwiftUI
 
-/// The content of the notch alert. Black like the panel, with a folder action when a project is known.
+/// The content of the notch alert. Drawn with the panel's shape and black so it reads as the notch dropping
+/// down; the whole card performs the open action, and the close button only dismisses.
 struct AgentAlertView: View {
     let notification: AgentNotification
+    /// Height of the notch on this screen; the card's content sits below it.
+    let topInset: CGFloat
     let onOpen: () -> Void
     let onDismiss: () -> Void
 
     var body: some View {
+        let shape = NotchPanelShape(bottomRadius: 20)
         HStack(spacing: 10) {
             AgentStatusGlyph(status: notification.status, size: 14)
 
@@ -23,17 +27,11 @@ struct AgentAlertView: View {
 
             Spacer(minLength: 8)
 
-            if notification.cwd?.isEmpty == false {
-                Button(action: onOpen) {
-                    Image(systemName: "folder")
-                        .font(.system(size: 11, weight: .semibold))
-                        .foregroundStyle(.white.opacity(0.65))
-                        .frame(width: 24, height: 24)
-                        .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-                .help("Open project in Finder")
-                .accessibilityLabel("Open project in Finder")
+            if let symbol = openSymbol {
+                Image(systemName: symbol)
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(.white.opacity(0.5))
+                    .accessibilityHidden(true)
             }
 
             Button(action: onDismiss) {
@@ -47,19 +45,29 @@ struct AgentAlertView: View {
             .help("Dismiss")
             .accessibilityLabel("Dismiss agent alert")
         }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 10)
+        .padding(.horizontal, 16)
+        .padding(.top, topInset + 8)
+        .padding(.bottom, 10)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .fill(Color.black.opacity(0.94))
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .strokeBorder(Color.white.opacity(0.08), lineWidth: 1)
-        )
-        .shadow(color: .black.opacity(0.35), radius: 14, y: 6)
+        .background(shape.fill(Color.black))
+        .overlay(shape.strokeBorder(Color.white.opacity(0.06), lineWidth: 1))
+        .contentShape(shape)
+        .onTapGesture(perform: onOpen)
+        .help(openHelp ?? "")
         .accessibilityElement(children: .contain)
         .accessibilityLabel("\(notification.title), \(notification.body)")
+        .accessibilityAction(named: openHelp ?? "Open") { onOpen() }
+    }
+
+    private var openSymbol: String? {
+        if notification.target.app != nil { return "arrow.up.forward.app" }
+        if notification.target.cwd != nil { return "folder" }
+        return nil
+    }
+
+    private var openHelp: String? {
+        if notification.target.app != nil { return "Switch to the app running this session" }
+        if notification.target.cwd != nil { return "Open the project in Finder" }
+        return nil
     }
 }

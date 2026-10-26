@@ -2,17 +2,22 @@ import Foundation
 
 /// Persisted user settings. Custom decoding keeps old files loadable after a schema bump.
 public struct Settings: Codable, Equatable, Sendable {
-    public static let currentSchemaVersion = 4
+    public static let currentSchemaVersion = 5
     public static let hoverDelayRange: ClosedRange<Double> = 0.05...1.5
     public static let collapseDelayRange: ClosedRange<Double> = 0.1...2.0
     public static let agentRetentionRange: ClosedRange<Double> = 1...120
-    public static let defaultEnabledModules = ["clock"]
+    /// New installs start with what Brim is for at a glance; existing files keep their own list.
+    public static let defaultEnabledModules = ["media", "clock"]
 
     public var schemaVersion: Int = Settings.currentSchemaVersion
-    /// Seconds the pointer must rest on the notch before a peek appears.
+    /// Seconds the pointer must rest on the notch before the panel opens.
     public var hoverDelay: Double = 0.15
     /// Seconds the pointer must leave the panel before it collapses.
     public var collapseDelay: Double = 0.4
+    /// False opens the panel only on a click; hovering then does nothing.
+    public var opensOnHover: Bool = true
+    /// Widen the collapsed notch to show live content (playing media, an agent that needs you).
+    public var showLiveActivity: Bool = true
     /// The system login item is the source of truth; this mirrors it for persistence and diagnostics.
     public var launchAtLogin: Bool = false
     /// Enabled module IDs in display order. Unknown IDs are ignored by the registry.
@@ -38,6 +43,9 @@ public struct Settings: Codable, Equatable, Sendable {
         hoverDelay = min(max(hover, Self.hoverDelayRange.lowerBound), Self.hoverDelayRange.upperBound)
         let collapse = try container.decodeIfPresent(Double.self, forKey: .collapseDelay) ?? defaults.collapseDelay
         collapseDelay = min(max(collapse, Self.collapseDelayRange.lowerBound), Self.collapseDelayRange.upperBound)
+        opensOnHover = try container.decodeIfPresent(Bool.self, forKey: .opensOnHover) ?? defaults.opensOnHover
+        showLiveActivity = try container.decodeIfPresent(Bool.self, forKey: .showLiveActivity)
+            ?? defaults.showLiveActivity
 
         launchAtLogin = try container.decodeIfPresent(Bool.self, forKey: .launchAtLogin) ?? defaults.launchAtLogin
         enabledModules = try container.decodeIfPresent([String].self, forKey: .enabledModules) ?? defaults.enabledModules

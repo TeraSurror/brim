@@ -40,6 +40,8 @@ public protocol LoginItemControlling {
 }
 
 public protocol SettingsPersisting {
+    /// False before the first save, which is how Brim knows this is the first launch.
+    var hasSavedSettings: Bool { get }
     func load() -> Settings
     func save(_ settings: Settings)
 }
@@ -66,16 +68,28 @@ public protocol AgentEventListening: AnyObject {
 @MainActor
 public protocol AgentNotifying: AnyObject {
     var authorization: NotificationAuthorization { get }
-    var onOpenProject: ((String) -> Void)? { get set }
+    var onOpen: ((AgentOpenTarget) -> Void)? { get set }
     func refreshAuthorization() async
     func requestAuthorization() async -> NotificationAuthorization
     func post(_ notification: AgentNotification)
 }
 
-/// Opening a project without letting the agent module touch AppKit directly.
+/// Opening a project or bringing an app forward without letting the agent module touch AppKit directly.
 @MainActor
 public protocol WorkspaceOpening: AnyObject {
     func openDirectory(_ path: String) -> Bool
+    /// False when no installed app has this bundle identifier, so the caller can fall back.
+    func activateApplication(bundleIdentifier: String) -> Bool
+}
+
+/// Brim's Claude Code integration: a hook script plus entries in `~/.claude/settings.json`. Only ever
+/// changed from the Settings button, after the user has read what will change.
+@MainActor
+public protocol ClaudeHookInstalling: AnyObject {
+    var status: ClaudeHookStatus { get }
+    func refresh()
+    func install() throws
+    func uninstall() throws
 }
 
 /// Brim's own alert shown under the notch when macOS notifications are unavailable or denied. This keeps

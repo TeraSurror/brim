@@ -6,12 +6,14 @@ panel. The source of truth for features and acceptance criteria is
 
 ## Current state
 
-M1, M2 and M3 F7/F8 are implemented: the notch panel shell (F1–F5), the clock and Now Playing modules, agent status
-over a local Unix socket and `brim://` URL (F7), opt-in agent alerts and Finder project actions (F8), settings schema 4,
-the per-screen window manager, and the bundled MediaRemote helper (built from a pinned third-party source). 184 unit
-tests pass. [`docs/PROGRESS.md`](docs/PROGRESS.md) is the handoff between sessions — read it after the spec. Visual
-sign-off for M1, the real-player/two-player sign-off for M2, the real-Claude-Code-hook/visual sign-off for F7 and the
-signed-build banner/visual sign-off for F8 are still pending; the checklist is [`docs/TESTING.md`](docs/TESTING.md).
+M1, M2, M3 F7/F8 and the UX revision F9–F13 are implemented: the notch panel shell (F1–F5), the clock and Now Playing
+modules, agent status over a local Unix socket and `brim://` URL (F7), opt-in agent alerts (F8), and the live notch
+revision — hover/click to open with no peek (F9), live activity in the notch's ears (F10), alerts that switch to the
+agent's app (F11), first-run setup and the Claude Code hook installer (F12), and a panel that widens per module (F13).
+Settings are schema 5. 247 unit tests pass; the UX revision is not committed yet. [`docs/PROGRESS.md`](docs/PROGRESS.md) is the handoff between sessions — read it after the spec. Visual
+sign-off for M1, the real-player/two-player sign-off for M2, the real-Claude-Code-hook/visual sign-off for F7, the
+signed-build banner/visual sign-off for F8 and the F9–F13 manual rows are still pending; the checklist is
+[`docs/TESTING.md`](docs/TESTING.md).
 The next M3 features (quick prompt, send-to-assistant) are not designed; brainstorm with the user before writing
 acceptance criteria.
 
@@ -42,12 +44,13 @@ brim/
 │   └── BrimKit/
 │       ├── App/                       # composition root: launcher, AppDelegate, AppController, AppModel, WindowPresenter
 │       ├── Window/                    # NotchWindow (NSPanel), per-screen window manager, pointer tracking, notch alert
-│       ├── State/                     # hover/expand state machine, timers, agent roster/alert geometry. Pure logic, no AppKit
+│       ├── State/                     # hover/expand state machine, timers, live-activity priority, agent roster/alert
+│       │                              #   geometry. Pure logic, no AppKit
 │       ├── Modules/                   # BrimModule protocol, module registry, implementations (Clock, Media, Agent…)
 │       ├── Services/                  # Protocols.swift + real implementations (screens, now playing, login item,
 │       │                              #   settings, MediaRemote helper, Spotify/Music Apple Events, agent socket/URL,
-│       │                              #   local notifications, Finder project opening)
-│       ├── Model/                     # value types: ScreenInfo, PanelState, NowPlaying, AgentEvent/Notification, Settings
+│       │                              #   local notifications, opening a session's app/folder, Claude Code hook installer)
+│       ├── Model/                     # value types: ScreenInfo, PanelState, LiveActivity, NowPlaying, AgentEvent/Notification, Settings
 │       ├── Support/                   # Log.swift (os.Logger categories), Diagnostics.swift
 │       └── UI/                        # SwiftUI panel views, media/agent cards, notch alert and settings. Never touches NSPanel
 ├── Tests/
@@ -101,23 +104,28 @@ These come from the spec's "Instructions for the coding agent" and Speakeasy's c
    login item, settings persistence, permissions, agent event listening). Each has one real implementation and one fake in
    `Tests/BrimTests/Fakes.swift`.
 5. **Features are `BrimModule`s.** New functionality (media, calendar, AI tools) goes in `Modules/` and plugs into the
-   module host without changes to the window shell.
+   module host without changes to the window shell. A module shows itself at rest by publishing a `LiveActivity` and
+   drawing its two ear views; the shell only picks the highest priority.
 6. **No permission requests at launch.** A module asks for its permission only when the user enables it, after an
    in-app explanation, and keeps working (degraded) when permission is denied.
 7. **No network access in M1 or M2.** Agent status (M3 F7) is local-only as well. No analytics, ever. Any later network
    use (quick prompt) is per module, opt-in, and documented.
 8. **No third-party dependencies** without asking the user first. The one approved exception is the build-time MediaRemote helper (BSD-3, pinned by tag and SHA, never linked or committed).
-9. **Idle cost is near zero:** under 0.5% CPU and under 80 MB memory. Prefer notifications to polling, and never poll
-   faster than once a second while collapsed. Monitors (pointer, now playing) run only while someone needs them. The
-   agent socket is one file descriptor while its module is enabled; its roster prunes on events/panel open, not a timer.
+9. **Idle cost is near zero:** under 0.5% CPU and under 80 MB memory, counting Brim's helper processes. Prefer
+   notifications to polling, and never poll faster than once a second while collapsed (a followed player is polled every
+   3 s then). Monitors (pointer, now playing) run only while someone needs them. The agent socket is one file descriptor
+   while its module is enabled; its roster prunes on events/panel open, not a timer.
 10. **Media stays behind `NowPlayingProviding`.** The MediaRemote helper is a child process loaded by Perl, never
-    linked into Brim. The stream runs only between the first peek and the end of the collapse animation (plus a one
-    second grace), and is wrapped in a supervisor that watches Brim's PID so it cannot outlive the app.
+    linked into Brim. It runs while Now Playing is enabled and the live notch is on (otherwise only while a panel is
+    open, plus a one second grace), restarts with a backoff if it exits, and is wrapped in a supervisor that watches
+    Brim's PID so it cannot outlive the app.
 11. **Player control is optional.** The helper needs no permission. Following Spotify or Music directly is an
     Automation feature requested through the module's explanation flow; denial must leave the adapter path working.
 12. **Agent events stay local.** The Unix socket lives in Application Support with a `0700` directory and `0600` file,
     rejects other users with `getpeereid`, and is removed when the module is disabled or Brim quits. `brim://agent`
-    input is validated as untrusted; never execute a field from it. Enabling Agent Status is the only switch that
+    input is validated as untrusted; never execute a field from it. The `app` field is only ever looked up as an
+    installed bundle identifier. Brim edits `~/.claude/settings.json` only from the Settings button, after showing what
+    changes, with a backup, and never when the file does not parse. Enabling Agent Status is the only switch that
     starts the listener — no permission prompt is involved. Agent alerts are a separate opt-in; when macOS refuses
     notification authorization (notably ad-hoc dev builds), use the notch alert rather than silently dropping the alert.
 
@@ -155,10 +163,10 @@ open build/Brim.app
 
 ## Testing expectations
 
-- Unit test: the hover/expand state machine (fake clock), screen and notch geometry (recorded `ScreenInfo` values), the
-  module registry, settings migrations, the media module against a fake `NowPlayingService`, and agent event validation,
-  roster ordering/retention, notification transitions/geometry, the socket listener against a real temp socket, and URL
-  parsing.
+- Unit test: the hover/expand state machine (fake clock), screen, notch and live-notch geometry (recorded `ScreenInfo`
+  values), live-activity priority, the module registry, settings migrations, the media module against a fake
+  `NowPlayingService`, and agent event validation, roster ordering/retention, notification transitions/geometry, the
+  socket listener against a real temp socket, URL parsing, and the Claude Code hook installer against a temp home.
 - Each test file covers one unit, is a `@MainActor final class …Tests: XCTestCase` and builds its fakes in `setUp`.
 - After each feature, add a row to `docs/TESTING.md` that maps manual checks to that feature's acceptance criteria:
   notched MacBook, with and without an external display, light and dark mode, over a full-screen app. Check idle CPU in

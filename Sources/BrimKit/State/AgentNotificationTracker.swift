@@ -27,7 +27,7 @@ public struct AgentNotificationTracker: Sendable {
             title: title,
             body: String(detail.prefix(180)),
             sessionID: session.id,
-            cwd: session.cwd,
+            target: session.openTarget,
             status: session.status
         )
     }

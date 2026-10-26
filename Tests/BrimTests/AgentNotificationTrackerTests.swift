@@ -32,7 +32,7 @@ final class AgentNotificationTrackerTests: XCTestCase {
 
         XCTAssertEqual(note?.title, "Claude Code needs your input")
         XCTAssertEqual(note?.body, "Fix the parser — Waiting for permission")
-        XCTAssertEqual(note?.cwd, "/tmp/project")
+        XCTAssertEqual(note?.target.cwd, "/tmp/project")
         XCTAssertEqual(note?.sessionID, "claude-code|s1")
     }
 
@@ -109,7 +109,7 @@ final class AgentNotificationTrackerTests: XCTestCase {
         )
 
         XCTAssertEqual(note?.body.count, 180)
-        XCTAssertNil(note?.cwd)
+        XCTAssertNil(note?.target.cwd)
     }
 
     func testEmptyDetailUsesTheTitle() throws {

@@ -1,16 +1,55 @@
 import SwiftUI
 
 struct SettingsView: View {
+    @EnvironmentObject var model: AppModel
+
     var body: some View {
-        TabView {
+        TabView(selection: $model.settingsTab) {
             GeneralSettingsTab()
                 .tabItem { Label("General", systemImage: "gearshape") }
+                .tag(SettingsTab.general)
+            MediaSettingsTab()
+                .tabItem { Label("Media", systemImage: "play.circle") }
+                .tag(SettingsTab.media)
+            AgentsSettingsTab()
+                .tabItem { Label("Agents", systemImage: "sparkles") }
+                .tag(SettingsTab.agents)
             ModulesSettingsTab()
                 .tabItem { Label("Modules", systemImage: "square.grid.2x2") }
+                .tag(SettingsTab.modules)
             AboutTab()
                 .tabItem { Label("About", systemImage: "info.circle") }
+                .tag(SettingsTab.about)
         }
-        .frame(width: 600, height: 540)
+        .frame(width: 600, height: 560)
+    }
+}
+
+/// Shown at the top of a module's tab while that module is off, so its options are never a dead end.
+private struct ModuleOffNotice: View {
+    @EnvironmentObject var model: AppModel
+    let moduleID: String
+    let title: String
+    let message: String
+
+    var body: some View {
+        if !model.isModuleEnabled(moduleID) {
+            Section {
+                HStack(spacing: 10) {
+                    Image(systemName: "power.circle")
+                        .foregroundStyle(.secondary)
+                        .accessibilityHidden(true)
+                    Text(message)
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Spacer(minLength: 8)
+                    Button("Turn On \(title)") {
+                        model.setModuleEnabled(moduleID, true)
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -18,16 +57,43 @@ struct SettingsView: View {
 
 private struct GeneralSettingsTab: View {
     @EnvironmentObject var model: AppModel
-    @State private var showNotificationExplanation = false
 
     var body: some View {
         Form {
+            if model.showsWelcome {
+                Section {
+                    HStack(alignment: .top, spacing: 12) {
+                        Image(systemName: "rectangle.topthird.inset.filled")
+                            .font(.system(size: 22))
+                            .foregroundStyle(.secondary)
+                            .accessibilityHidden(true)
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("Brim lives in your notch").font(.headline)
+                            Text("Move the pointer to the notch to open the panel. While music plays or an agent needs you, the notch shows it on both sides. Right-click the panel for Settings and Quit, or open Brim again from Finder or Spotlight to come back here.")
+                                .font(.callout)
+                                .foregroundStyle(.secondary)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                        Spacer(minLength: 8)
+                        Button("Got It") { model.showsWelcome = false }
+                    }
+                    .padding(.vertical, 4)
+                }
+            }
+
             Section {
-                LabeledContent("Peek delay") {
+                Picker("Open the panel", selection: $model.settings.opensOnHover) {
+                    Text("On hover").tag(true)
+                    Text("On click").tag(false)
+                }
+                .pickerStyle(.radioGroup)
+                .accessibilityLabel("Open the panel")
+
+                LabeledContent("Hover delay") {
                     HStack(spacing: 10) {
                         Slider(value: $model.settings.hoverDelay, in: Settings.hoverDelayRange, step: 0.05)
                             .frame(width: 190)
-                            .accessibilityLabel("Peek delay")
+                            .accessibilityLabel("Hover delay")
                             .accessibilityValue("\(milliseconds(model.settings.hoverDelay)) milliseconds")
                         Text("\(milliseconds(model.settings.hoverDelay)) ms")
                             .monospacedDigit()
@@ -35,6 +101,7 @@ private struct GeneralSettingsTab: View {
                             .frame(width: 58, alignment: .trailing)
                     }
                 }
+                .disabled(!model.settings.opensOnHover)
 
                 LabeledContent("Collapse delay") {
                     HStack(spacing: 10) {
@@ -48,19 +115,83 @@ private struct GeneralSettingsTab: View {
                             .frame(width: 58, alignment: .trailing)
                     }
                 }
+            } header: {
+                Text("Panel")
+            } footer: {
+                Text("The panel closes when the pointer leaves it. Changes save automatically.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
 
+            Section {
+                Toggle("Show activity beside the notch", isOn: $model.settings.showLiveActivity)
+                    .accessibilityLabel("Show activity beside the notch")
                 Toggle(
                     "Show a handle on displays without a notch",
                     isOn: $model.settings.showOnNonNotchedDisplays
                 )
                 .accessibilityLabel("Show a handle on displays without a notch")
             } header: {
-                Text("Panel")
+                Text("Notch")
             } footer: {
-                Text("Hover the notch (or the handle) to peek. Keep hovering or click to open the panel. Changes save automatically.")
+                Text("While media plays or an agent needs you, the notch widens to show it, so you can see it without opening the panel. On a display without a notch this is a small pill at the top.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
+
+            Section {
+                Toggle(
+                    "Launch at login",
+                    isOn: Binding(
+                        get: { model.launchAtLogin },
+                        set: { model.setLaunchAtLogin($0) }
+                    )
+                )
+                .accessibilityLabel("Launch at login")
+                if let error = model.launchAtLoginError {
+                    Label(error, systemImage: "exclamationmark.triangle.fill")
+                        .font(.callout)
+                        .foregroundStyle(.orange)
+                }
+            } header: {
+                Text("Startup")
+            }
+
+            Section {
+                HStack(alignment: .top, spacing: 10) {
+                    Image(systemName: "cursorarrow.motionlines")
+                        .foregroundStyle(.secondary)
+                        .accessibilityHidden(true)
+                    Text("Brim never asks for a permission at launch. Features ask only when you turn them on, with an explanation first.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+        }
+        .formStyle(.grouped)
+        .onAppear {
+            model.refreshLaunchAtLogin()
+        }
+    }
+
+    private func milliseconds(_ seconds: Double) -> Int {
+        Int((seconds * 1000).rounded())
+    }
+}
+
+// MARK: - Media
+
+private struct MediaSettingsTab: View {
+    @EnvironmentObject var model: AppModel
+
+    var body: some View {
+        Form {
+            ModuleOffNotice(
+                moduleID: MediaModule.moduleID,
+                title: "Now Playing",
+                message: "Now Playing is off. Turning it on needs no permission."
+            )
 
             Section {
                 Picker(
@@ -70,7 +201,7 @@ private struct GeneralSettingsTab: View {
                         set: { value in
                             let sourceID = value.isEmpty ? nil : value
                             model.setPreferredPlayer(sourceID)
-                            // Choosing a player is the moment Automation becomes useful; the footer above
+                            // Choosing a player is the moment Automation becomes useful; the footer below
                             // is the in-app explanation and macOS only asks for a running player.
                             if sourceID != nil {
                                 Task { await model.requestAutomationPermission() }
@@ -101,9 +232,133 @@ private struct GeneralSettingsTab: View {
                     }
                 }
             } header: {
-                Text("Media")
+                Text("Player")
             } footer: {
-                Text("Automatic follows whatever macOS reports as Now Playing, including Safari. Choosing Spotify or Music lets Brim follow that player when several are playing; macOS asks for Automation at that point. If it isn't granted, Brim keeps following macOS.")
+                Text("Automatic shows whatever macOS reports as Now Playing, including Safari and Chrome, and needs no permission. Choosing Spotify or Music lets Brim follow that player when several are playing; macOS then asks for Automation so Brim can read and control it. If you decline, Brim keeps following macOS.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .formStyle(.grouped)
+        .onAppear { model.refreshAutomationStatus() }
+    }
+
+    private var automationStatus: (label: String, symbol: String, color: Color) {
+        switch model.automationStatus {
+        case .granted:
+            ("Automation allowed", "checkmark.circle.fill", .green)
+        case .denied:
+            ("Automation denied — following macOS only", "exclamationmark.circle.fill", .orange)
+        case .restricted:
+            ("Automation restricted by macOS", "exclamationmark.circle.fill", .orange)
+        case .unavailable:
+            ("Start Spotify or Music to grant Automation", "info.circle", .secondary)
+        case .notDetermined:
+            ("Automation not granted yet", "circle.dashed", .secondary)
+        }
+    }
+}
+
+// MARK: - Agents
+
+private struct AgentsSettingsTab: View {
+    @EnvironmentObject var model: AppModel
+    @State private var showNotificationExplanation = false
+    @State private var confirmHookInstall = false
+    @State private var confirmHookRemoval = false
+
+    var body: some View {
+        Form {
+            ModuleOffNotice(
+                moduleID: AgentModule.moduleID,
+                title: "Agent Status",
+                message: "Agent Status is off. Turning it on opens a local socket; nothing leaves the Mac."
+            )
+
+            Section {
+                HStack(spacing: 8) {
+                    Image(systemName: hookStatus.symbol)
+                        .foregroundStyle(hookStatus.color)
+                        .accessibilityHidden(true)
+                    Text(hookStatus.label)
+                        .font(.callout)
+                    Spacer(minLength: 8)
+                    switch model.claudeHookStatus {
+                    case .notInstalled?:
+                        Button("Connect…") { confirmHookInstall = true }
+                    case .outdated?:
+                        Button("Update…") { confirmHookInstall = true }
+                    case .installed?:
+                        Button("Disconnect…") { confirmHookRemoval = true }
+                    default:
+                        EmptyView()
+                    }
+                }
+                if let error = model.claudeHookError {
+                    Label(error, systemImage: "exclamationmark.triangle.fill")
+                        .font(.callout)
+                        .foregroundStyle(.orange)
+                }
+            } header: {
+                Text("Claude Code")
+            } footer: {
+                Text("Claude Code reports when it is working, needs your input or has finished. Start a new Claude Code session after connecting; running sessions keep their old hooks.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            Section {
+                Toggle("Alert when an agent needs input or fails", isOn: notificationBinding)
+                    .accessibilityLabel("Alert when an agent needs input or fails")
+
+                if model.agentNotificationAuthorization == .denied {
+                    HStack(spacing: 8) {
+                        Image(systemName: "bell.slash.fill")
+                            .foregroundStyle(.secondary)
+                            .accessibilityHidden(true)
+                        Text("macOS banners are off; Brim will show a notch alert instead.")
+                            .font(.callout)
+                            .foregroundStyle(.secondary)
+                        Spacer(minLength: 8)
+                        Button("Open Settings…") { model.openNotificationSettings() }
+                            .accessibilityLabel("Open Notification settings")
+                    }
+                } else if let error = model.agentNotificationError {
+                    Label(error, systemImage: "info.circle.fill")
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                }
+            } header: {
+                Text("Alerts")
+            } footer: {
+                Text("The notch lights up whenever an agent needs you. Alerts add a card under the notch, or a macOS banner when notifications are allowed, while the panel is closed. Clicking one switches to the app running the session.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            Section {
+                Picker("Keep finished sessions", selection: $model.settings.agentFinishedRetentionMinutes) {
+                    Text("1 minute").tag(1.0)
+                    Text("5 minutes").tag(5.0)
+                    Text("10 minutes").tag(10.0)
+                    Text("15 minutes").tag(15.0)
+                    Text("30 minutes").tag(30.0)
+                    Text("1 hour").tag(60.0)
+                    Text("2 hours").tag(120.0)
+                }
+                .accessibilityLabel("Keep finished agent sessions")
+
+                HStack(spacing: 8) {
+                    Button("Show a Test Session") { model.showTestAgentSession() }
+                        .disabled(!model.isModuleEnabled(AgentModule.moduleID))
+                    Button("Clear Finished") { model.clearFinishedAgentSessions() }
+                        .accessibilityLabel("Clear finished agent sessions")
+                    Spacer()
+                }
+            } header: {
+                Text("Sessions")
+            } footer: {
+                Text("Finished and failed sessions clear automatically; working ones stay until they report again.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -128,92 +383,17 @@ private struct GeneralSettingsTab: View {
                         .accessibilityLabel("Copy agent socket path")
                     }
                 }
-
-                Picker("Keep finished sessions", selection: $model.settings.agentFinishedRetentionMinutes) {
-                    Text("1 minute").tag(1.0)
-                    Text("5 minutes").tag(5.0)
-                    Text("10 minutes").tag(10.0)
-                    Text("15 minutes").tag(15.0)
-                    Text("30 minutes").tag(30.0)
-                    Text("1 hour").tag(60.0)
-                    Text("2 hours").tag(120.0)
-                }
-                .accessibilityLabel("Keep finished agent sessions")
-
-                Toggle("Notify when an agent needs input", isOn: notificationBinding)
-                    .accessibilityLabel("Notify when an agent needs input")
-
-                if model.agentNotificationAuthorization == .denied {
-                    HStack(spacing: 8) {
-                        Image(systemName: "bell.slash.fill")
-                            .foregroundStyle(.secondary)
-                            .accessibilityHidden(true)
-                        Text("macOS banners are off; Brim will show a notch alert instead.")
-                            .font(.callout)
-                            .foregroundStyle(.secondary)
-                        Spacer(minLength: 8)
-                        Button("Open Settings…") { model.openNotificationSettings() }
-                            .accessibilityLabel("Open Notification settings")
-                    }
-                } else if let error = model.agentNotificationError {
-                    Label(error, systemImage: "info.circle.fill")
-                        .font(.callout)
-                        .foregroundStyle(.secondary)
-                }
-
-                HStack(spacing: 8) {
-                    Text("Finished and failed sessions clear automatically; working ones stay until they report again.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                    Spacer(minLength: 8)
-                    Button("Clear finished") {
-                        model.clearFinishedAgentSessions()
-                    }
-                    .accessibilityLabel("Clear finished agent sessions")
-                }
             } header: {
-                Text("Agents")
+                Text("Other tools")
             } footer: {
-                Text("Enable the Agent Status module in Modules to listen. Alerts are opt-in and local: Brim shows a notch alert, and a macOS banner when notifications are allowed. Nothing leaves the Mac.")
+                Text("Codex, Cursor, editor extensions and scripts can report by writing one JSON line to this socket or opening a brim://agent link. See the README for the fields.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
-            }
-
-            Section {
-                Toggle(
-                    "Launch at login",
-                    isOn: Binding(
-                        get: { model.launchAtLogin },
-                        set: { model.setLaunchAtLogin($0) }
-                    )
-                )
-                .accessibilityLabel("Launch at login")
-                if let error = model.launchAtLoginError {
-                    Label(error, systemImage: "exclamationmark.triangle.fill")
-                        .font(.callout)
-                        .foregroundStyle(.orange)
-                }
-            } header: {
-                Text("Startup")
-            }
-
-            Section {
-                HStack(alignment: .top, spacing: 10) {
-                    Image(systemName: "cursorarrow.motionlines")
-                        .foregroundStyle(.secondary)
-                        .accessibilityHidden(true)
-                    Text("Brim never asks for a permission at launch. Modules ask only when you enable them, with an explanation first.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
             }
         }
         .formStyle(.grouped)
         .onAppear {
-            model.refreshLaunchAtLogin()
-            model.refreshAutomationStatus()
+            model.refreshClaudeHook()
             Task { await model.refreshAgentNotificationAuthorization() }
         }
         .alert("Enable agent alerts?", isPresented: $showNotificationExplanation) {
@@ -223,6 +403,18 @@ private struct GeneralSettingsTab: View {
             }
         } message: {
             Text("Brim will show a small alert under the notch when an agent is waiting for you or has failed, but only while the panel is closed. It will also use a macOS banner when notifications are allowed. Nothing leaves the Mac.")
+        }
+        .alert("Connect Claude Code?", isPresented: $confirmHookInstall) {
+            Button("Cancel", role: .cancel) {}
+            Button("Connect") { model.installClaudeHook() }
+        } message: {
+            Text("Brim will write ~/.brim/claude-hook.sh and add hooks for session start, prompts, tool use, notifications and stop to ~/.claude/settings.json. A backup of that file is saved next to it first, and your other hooks are kept. The hook only talks to Brim's local socket.")
+        }
+        .alert("Disconnect Claude Code?", isPresented: $confirmHookRemoval) {
+            Button("Cancel", role: .cancel) {}
+            Button("Disconnect", role: .destructive) { model.removeClaudeHook() }
+        } message: {
+            Text("Brim will remove its hooks from ~/.claude/settings.json (after saving a backup) and delete ~/.brim/claude-hook.sh. Other hooks are kept.")
         }
     }
 
@@ -244,22 +436,20 @@ private struct GeneralSettingsTab: View {
         )
     }
 
-    private func milliseconds(_ seconds: Double) -> Int {
-        Int((seconds * 1000).rounded())
-    }
-
-    private var automationStatus: (label: String, symbol: String, color: Color) {
-        switch model.automationStatus {
-        case .granted:
-            ("Automation allowed", "checkmark.circle.fill", .green)
-        case .denied:
-            ("Automation denied — following macOS only", "exclamationmark.circle.fill", .orange)
-        case .restricted:
-            ("Automation restricted by macOS", "exclamationmark.circle.fill", .orange)
-        case .unavailable:
-            ("Start Spotify or Music to grant Automation", "info.circle", .secondary)
-        case .notDetermined:
-            ("Automation not granted yet", "circle.dashed", .secondary)
+    private var hookStatus: (label: String, symbol: String, color: Color) {
+        switch model.claudeHookStatus {
+        case .installed?:
+            ("Connected", "checkmark.circle.fill", .green)
+        case .outdated?:
+            ("Connected with an older hook", "arrow.triangle.2.circlepath.circle.fill", .orange)
+        case .notInstalled?:
+            ("Not connected", "circle.dashed", .secondary)
+        case .claudeNotFound?:
+            ("Claude Code hasn't run on this Mac yet", "info.circle", .secondary)
+        case .unreadableSettings?:
+            ("~/.claude/settings.json isn't valid JSON", "exclamationmark.triangle.fill", .orange)
+        case nil:
+            ("Unavailable", "circle.dashed", .secondary)
         }
     }
 }

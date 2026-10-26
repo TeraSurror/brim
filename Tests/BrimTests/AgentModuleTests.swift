@@ -33,6 +33,7 @@ final class AgentModuleTests: XCTestCase {
         title: String? = "Fix parser",
         detail: String? = "Running tests",
         cwd: String? = "/tmp/project",
+        app: String? = nil,
         at offset: TimeInterval = 0
     ) throws -> AgentEvent {
         try XCTUnwrap(AgentEvent(
@@ -42,6 +43,7 @@ final class AgentModuleTests: XCTestCase {
             title: title,
             detail: detail,
             cwd: cwd,
+            app: app,
             timestamp: base.addingTimeInterval(offset)
         ))
     }
@@ -153,6 +155,73 @@ final class AgentModuleTests: XCTestCase {
         XCTAssertEqual(module.sessionCount, 2)
     }
 
+    // MARK: - Live notch
+
+    func testWaitingAndFailuresAskForAttentionAndWorkingIsAmbient() throws {
+        module.setEnabled(true)
+        XCTAssertNil(module.liveActivity)
+
+        listener.emit(try event(session: "a", status: .working))
+        XCTAssertEqual(module.liveActivity, LiveActivity(priority: .ambient))
+        XCTAssertEqual(module.liveStatus, .working)
+
+        listener.emit(try event(session: "b", status: .waiting, at: 1))
+        XCTAssertEqual(module.liveActivity, LiveActivity(priority: .attention))
+        XCTAssertEqual(module.liveStatus, .waiting)
+        XCTAssertEqual(module.liveCount, 1)
+
+        listener.emit(try event(session: "b", status: .done, at: 2))
+        listener.emit(try event(session: "a", status: .done, at: 3))
+        XCTAssertNil(module.liveActivity)
+    }
+
+    func testOpeningThePanelAcknowledgesFailures() throws {
+        module.setEnabled(true)
+        listener.emit(try event(session: "a", status: .error))
+        XCTAssertEqual(module.liveStatus, .error)
+
+        module.setPanelActive(true)
+        module.setPanelActive(false)
+        XCTAssertNil(module.liveActivity)
+        XCTAssertEqual(module.sessions.count, 1)
+
+        // Failing again after recovering lights the notch again.
+        listener.emit(try event(session: "a", status: .working, at: 1))
+        listener.emit(try event(session: "a", status: .error, at: 2))
+        XCTAssertEqual(module.liveStatus, .error)
+    }
+
+    func testWaitingIsNotAcknowledgedByOpeningThePanel() throws {
+        module.setEnabled(true)
+        listener.emit(try event(session: "a", status: .waiting))
+        module.setPanelActive(true)
+        module.setPanelActive(false)
+        XCTAssertEqual(module.liveStatus, .waiting)
+    }
+
+    func testLiveCountsSessionsSharingTheStatus() throws {
+        module.setEnabled(true)
+        listener.emit(try event(session: "a", status: .waiting))
+        listener.emit(try event(session: "b", status: .waiting))
+        listener.emit(try event(session: "c", status: .working))
+        XCTAssertEqual(module.liveCount, 2)
+    }
+
+    func testDisablingClearsTheLiveNotch() throws {
+        module.setEnabled(true)
+        listener.emit(try event(status: .waiting))
+        module.setEnabled(false)
+        XCTAssertNil(module.liveActivity)
+    }
+
+    func testTheTestSessionWaitsForInput() {
+        module.setEnabled(true)
+        module.showTestSession()
+        XCTAssertEqual(module.sessions.first?.status, .waiting)
+        XCTAssertEqual(module.sessions.first?.agentName, "Brim")
+        XCTAssertEqual(module.liveStatus, .waiting)
+    }
+
     func testSocketPathIsForwardedForSettings() {
         XCTAssertEqual(module.socketPath, listener.socketPath)
     }
@@ -174,7 +243,7 @@ final class AgentModuleTests: XCTestCase {
         module.ingest(try event(status: .waiting, at: 1))
         XCTAssertEqual(notifier.posted.count, 1)
         XCTAssertTrue(notifier.posted[0].title.contains("needs your input"))
-        XCTAssertEqual(notifier.posted[0].cwd, "/tmp/project")
+        XCTAssertEqual(notifier.posted[0].target.cwd, "/tmp/project")
 
         module.ingest(try event(status: .waiting, at: 2))
         XCTAssertEqual(notifier.posted.count, 1)
@@ -216,7 +285,7 @@ final class AgentModuleTests: XCTestCase {
         XCTAssertTrue(notifier.posted.isEmpty)
         XCTAssertEqual(alerts.presented.count, 1)
         XCTAssertEqual(alerts.presented[0].status, .waiting)
-        XCTAssertEqual(alerts.presented[0].cwd, "/tmp/project")
+        XCTAssertEqual(alerts.presented[0].target.cwd, "/tmp/project")
     }
 
     func testTheNotchAlertOpensTheProject() throws {
@@ -252,15 +321,58 @@ final class AgentModuleTests: XCTestCase {
         module.ingest(try event(cwd: "/tmp/project"))
         let session = try XCTUnwrap(module.sessions.first)
 
-        module.openProject(session)
+        module.open(session)
 
         XCTAssertEqual(workspace.openedPaths, ["/tmp/project"])
     }
 
-    func testNotificationClickOpensTheProject() {
-        notifier.onOpenProject?("/tmp/clicked-project")
+    func testOpeningASessionPrefersItsApp() throws {
+        workspace.installedApps = ["com.apple.Terminal"]
+        module.setEnabled(true)
+        module.ingest(try event(cwd: "/tmp/project", app: "com.apple.Terminal"))
 
-        XCTAssertEqual(workspace.openedPaths, ["/tmp/clicked-project"])
+        module.open(try XCTUnwrap(module.sessions.first))
+
+        XCTAssertEqual(workspace.activatedApps, ["com.apple.Terminal"])
+        XCTAssertTrue(workspace.openedPaths.isEmpty)
+    }
+
+    func testAnUninstalledAppFallsBackToTheFolder() throws {
+        module.setEnabled(true)
+        module.ingest(try event(cwd: "/tmp/project", app: "com.example.gone"))
+
+        module.open(try XCTUnwrap(module.sessions.first))
+
+        XCTAssertTrue(workspace.activatedApps.isEmpty)
+        XCTAssertEqual(workspace.openedPaths, ["/tmp/project"])
+    }
+
+    func testTheNotchAlertOpensTheApp() throws {
+        workspace.installedApps = ["com.googlecode.iterm2"]
+        notifier.authorization = .denied
+        module.setNotificationsEnabled(true)
+        module.setEnabled(true)
+        module.ingest(try event(status: .waiting, app: "com.googlecode.iterm2"))
+
+        alerts.openLatest()
+
+        XCTAssertEqual(workspace.activatedApps, ["com.googlecode.iterm2"])
+    }
+
+    func testOpeningThePanelDismissesTheNotchAlert() throws {
+        module.setEnabled(true)
+        let before = alerts.dismissCount
+        module.setPanelActive(true)
+        XCTAssertEqual(alerts.dismissCount, before + 1)
+    }
+
+    func testNotificationClickOpensTheTarget() {
+        workspace.installedApps = ["com.microsoft.VSCode"]
+        notifier.onOpen?(AgentOpenTarget(app: "com.microsoft.VSCode", cwd: "/tmp/clicked-project"))
+        notifier.onOpen?(AgentOpenTarget(app: nil, cwd: "/tmp/other"))
+
+        XCTAssertEqual(workspace.activatedApps, ["com.microsoft.VSCode"])
+        XCTAssertEqual(workspace.openedPaths, ["/tmp/other"])
     }
 
     func testAFailedSocketReportsNotListening() {

@@ -43,6 +43,17 @@ public struct NowPlayingSource: Identifiable, Equatable, Hashable, Sendable {
             id: "com.google.Chrome", name: "Chrome", symbolName: "globe"),
         "com.microsoft.edgemac": NowPlayingSource(
             id: "com.microsoft.edgemac", name: "Edge", symbolName: "globe"),
+        // Several browsers end their bundle ID in "Browser", so the fallback name would be ambiguous.
+        "com.brave.Browser": NowPlayingSource(
+            id: "com.brave.Browser", name: "Brave", symbolName: "globe"),
+        "company.thebrowser.Browser": NowPlayingSource(
+            id: "company.thebrowser.Browser", name: "Arc", symbolName: "globe"),
+        "org.mozilla.firefox": NowPlayingSource(
+            id: "org.mozilla.firefox", name: "Firefox", symbolName: "globe"),
+        "com.operasoftware.Opera": NowPlayingSource(
+            id: "com.operasoftware.Opera", name: "Opera", symbolName: "globe"),
+        "com.vivaldi.Vivaldi": NowPlayingSource(
+            id: "com.vivaldi.Vivaldi", name: "Vivaldi", symbolName: "globe"),
         "com.apple.QuickTimePlayerX": NowPlayingSource(
             id: "com.apple.QuickTimePlayerX", name: "QuickTime Player", symbolName: "film"),
         "com.apple.TV": NowPlayingSource(

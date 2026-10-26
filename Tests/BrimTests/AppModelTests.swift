@@ -185,6 +185,49 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(clock.panelActiveHistory, [true, false])
     }
 
+    // MARK: - Live notch
+
+    func testTheHighestPriorityEnabledModuleOwnsTheLiveNotch() {
+        model.settings.enabledModules = ["clock", "media"]
+        XCTAssertNil(model.liveModuleID)
+
+        clock.liveActivity = LiveActivity(priority: .ambient)
+        XCTAssertEqual(model.liveModuleID, "clock")
+
+        media.liveActivity = LiveActivity(priority: .media)
+        XCTAssertEqual(model.liveModuleID, "media")
+        XCTAssertEqual(model.liveModule?.id, "media")
+
+        media.liveActivity = nil
+        XCTAssertEqual(model.liveModuleID, "clock")
+    }
+
+    func testDisabledModulesNeverOwnTheLiveNotch() {
+        media.liveActivity = LiveActivity(priority: .attention)
+        XCTAssertNil(model.liveModuleID)
+
+        model.settings.enabledModules = ["clock", "media"]
+        XCTAssertEqual(model.liveModuleID, "media")
+    }
+
+    func testTurningTheLiveNotchOffClearsItAndTellsMedia() {
+        let mediaModule = FakeMediaControllingModule()
+        let scoped = AppModel(
+            store: FakeSettingsStore(),
+            loginItems: loginItems,
+            registry: ModuleRegistry(modules: [clock, mediaModule]),
+            permissions: permissions
+        )
+        scoped.settings.enabledModules = ["clock"]
+        clock.liveActivity = LiveActivity(priority: .media)
+        XCTAssertEqual(scoped.liveModuleID, "clock")
+        XCTAssertEqual(mediaModule.liveEnabledHistory, [true])
+
+        scoped.settings.showLiveActivity = false
+        XCTAssertNil(scoped.liveModuleID)
+        XCTAssertEqual(mediaModule.liveEnabledHistory, [true, false])
+    }
+
     func testPreferredPlayerIsForwardedAndPersisted() {
         let mediaModule = FakeMediaControllingModule()
         let scoped = AppModel(
@@ -204,6 +247,91 @@ final class AppModelTests: XCTestCase {
 
         XCTAssertNil(store.stored.preferredPlayerBundleID)
         XCTAssertNil(mediaModule.appliedPreferences.last ?? nil)
+    }
+
+    // MARK: - First run and setup
+
+    private func makeModel(store: FakeSettingsStore, hook: FakeClaudeHook? = nil) -> AppModel {
+        AppModel(
+            store: store,
+            loginItems: loginItems,
+            registry: ModuleRegistry(modules: [clock, media, agent]),
+            permissions: permissions,
+            claudeHook: hook
+        )
+    }
+
+    func testTheFirstLaunchIsDetectedAndSavedOnce() {
+        let fresh = FakeSettingsStore(hasSaved: false)
+        let first = makeModel(store: fresh)
+        XCTAssertTrue(first.isFirstLaunch)
+        XCTAssertTrue(first.showsWelcome)
+        XCTAssertTrue(fresh.hasSavedSettings)
+
+        let second = makeModel(store: fresh)
+        XCTAssertFalse(second.isFirstLaunch)
+        XCTAssertFalse(second.showsWelcome)
+        XCTAssertFalse(model.isFirstLaunch)
+    }
+
+    func testShowingATabOpensSettingsThere() {
+        var opened = 0
+        model.openSettings = { opened += 1 }
+        model.showSettings(.agents)
+        XCTAssertEqual(model.settingsTab, .agents)
+        XCTAssertEqual(opened, 1)
+    }
+
+    func testChoosingAPlayerInThePanelWithoutAutomationOpensMediaSettings() {
+        var opened = 0
+        model.openSettings = { opened += 1 }
+
+        model.choosePlayerFromPanel(nil)
+        XCTAssertEqual(opened, 0)
+
+        model.choosePlayerFromPanel(ScriptablePlayer.spotify.rawValue)
+        XCTAssertEqual(store.stored.preferredPlayerBundleID, ScriptablePlayer.spotify.rawValue)
+        XCTAssertEqual(model.settingsTab, .media)
+        XCTAssertEqual(opened, 1)
+        XCTAssertTrue(permissions.requests.isEmpty)
+    }
+
+    func testChoosingAPlayerWithAutomationStaysInThePanel() {
+        permissions.statuses[.automation] = .granted
+        var opened = 0
+        model.openSettings = { opened += 1 }
+        model.choosePlayerFromPanel(ScriptablePlayer.music.rawValue)
+        XCTAssertEqual(opened, 0)
+    }
+
+    func testClaudeHookInstallAndRemovalUpdateTheStatus() {
+        let hook = FakeClaudeHook()
+        let scoped = makeModel(store: FakeSettingsStore(), hook: hook)
+        XCTAssertEqual(scoped.claudeHookStatus, .notInstalled)
+
+        scoped.installClaudeHook()
+        XCTAssertEqual(scoped.claudeHookStatus, .installed)
+        XCTAssertNil(scoped.claudeHookError)
+
+        scoped.removeClaudeHook()
+        XCTAssertEqual(scoped.claudeHookStatus, .notInstalled)
+        XCTAssertEqual(hook.installCount, 1)
+        XCTAssertEqual(hook.uninstallCount, 1)
+    }
+
+    func testClaudeHookFailuresAreReported() {
+        let hook = FakeClaudeHook()
+        hook.failure = .unreadableSettings
+        let scoped = makeModel(store: FakeSettingsStore(), hook: hook)
+
+        scoped.installClaudeHook()
+        XCTAssertEqual(scoped.claudeHookError, ClaudeHookError.unreadableSettings.errorDescription)
+        XCTAssertEqual(scoped.claudeHookStatus, .notInstalled)
+    }
+
+    func testTestSessionGoesThroughTheAgentModule() {
+        model.showTestAgentSession()
+        XCTAssertEqual(agent.testSessionCount, 1)
     }
 
     func testRequestingAutomationUpdatesTheStatus() async {

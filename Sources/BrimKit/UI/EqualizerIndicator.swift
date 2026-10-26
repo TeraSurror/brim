@@ -1,7 +1,7 @@
 import SwiftUI
 
-/// The playing indicator on the right edge of the peek. The symbol effect runs only in the view tree
-/// while the peek is visible.
+/// The playing indicator in the live notch's right ear. The symbol effect runs only while it is in the view
+/// tree and the track is playing.
 struct EqualizerIndicator: View {
     let isPlaying: Bool
 

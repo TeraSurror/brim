@@ -14,7 +14,7 @@ final class WindowPresenter {
             window.styleMask = [.titled, .closable]
             window.isReleasedWhenClosed = false
             window.isRestorable = false
-            window.setContentSize(NSSize(width: 600, height: 540))
+            window.setContentSize(NSSize(width: 600, height: 560))
             // `NSWindow.center()` picks the screen of the app's key window, which can be a different
             // display than the panel the user just clicked. Follow the pointer instead.
             centerOnPointerScreen(window)

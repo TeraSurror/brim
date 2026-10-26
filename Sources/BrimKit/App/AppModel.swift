@@ -2,6 +2,10 @@ import AppKit
 import Combine
 import Foundation
 
+public enum SettingsTab: String, CaseIterable, Sendable {
+    case general, media, agents, modules, about
+}
+
 /// Shared state for the panel and the settings window. Saves on every settings change, then lets the
 /// registry bring module activation in line.
 @MainActor
@@ -20,6 +24,9 @@ public final class AppModel: ObservableObject {
             if settings.agentNotificationsEnabled != oldValue.agentNotificationsEnabled {
                 syncAgentNotifications()
             }
+            if settings.showLiveActivity != oldValue.showLiveActivity {
+                syncLiveActivity()
+            }
         }
     }
 
@@ -29,10 +36,23 @@ public final class AppModel: ObservableObject {
     @Published public private(set) var automationStatus: PermissionStatus = .notDetermined
     @Published public private(set) var agentNotificationAuthorization: NotificationAuthorization = .notDetermined
     @Published public var agentNotificationError: String?
+    /// The module that owns the live notch right now, or nil when the collapsed notch should be bare.
+    @Published public private(set) var liveModuleID: String?
+    @Published public var settingsTab: SettingsTab = .general
+    /// Shown at the top of Settings on the very first launch.
+    @Published public var showsWelcome: Bool
+    @Published public private(set) var claudeHookStatus: ClaudeHookStatus?
+    @Published public var claudeHookError: String?
 
-    /// Screen IDs whose panel is peek or expanded. Modules see one flat "active" flag so a second display
-    /// keeping its panel open never stops the first display's monitors.
+    /// True when no settings file existed at launch.
+    public let isFirstLaunch: Bool
+
+    /// Screen IDs whose panel is open. Modules see one flat "active" flag so a second display keeping its
+    /// panel open never stops the first display's monitors.
     private var activePanels: Set<String> = []
+    /// The latest activity each module published, keyed by module ID.
+    private var liveActivities: [String: LiveActivity] = [:]
+    private var liveSubscriptions: [AnyCancellable] = []
 
     /// Set by the composition root; the UI never calls AppKit or window APIs itself.
     public var openSettings: () -> Void = {}
@@ -43,17 +63,23 @@ public final class AppModel: ObservableObject {
     private let loginItems: LoginItemControlling
     private let registry: ModuleRegistry
     private let permissions: PermissionRequesting
+    private let claudeHook: ClaudeHookInstalling?
 
     public init(
         store: SettingsPersisting,
         loginItems: LoginItemControlling,
         registry: ModuleRegistry,
-        permissions: PermissionRequesting
+        permissions: PermissionRequesting,
+        claudeHook: ClaudeHookInstalling? = nil
     ) {
         self.store = store
         self.loginItems = loginItems
         self.registry = registry
         self.permissions = permissions
+        self.claudeHook = claudeHook
+        self.isFirstLaunch = !store.hasSavedSettings
+        self.showsWelcome = !store.hasSavedSettings
+        self.claudeHookStatus = claudeHook?.status
         self.settings = store.load()
         // The system login item is the source of truth; a settings file can be stale.
         self.launchAtLogin = loginItems.isEnabled
@@ -61,16 +87,36 @@ public final class AppModel: ObservableObject {
         syncPreferredPlayer()
         syncAgentRetention()
         syncAgentNotifications()
+        syncLiveActivity()
         refreshAutomationStatus()
         if settings.launchAtLogin != launchAtLogin {
             settings.launchAtLogin = launchAtLogin
             store.save(settings)
+        }
+        // Write the defaults once so the next launch is not mistaken for the first.
+        if isFirstLaunch { store.save(settings) }
+        // Publishers emit the new value before the module stores it, so keep what they send.
+        liveSubscriptions = registry.allModules.map { module in
+            let id = module.id
+            return module.liveActivityPublisher.sink { [weak self] activity in
+                self?.liveActivities[id] = activity
+                self?.recomputeLiveModule()
+            }
         }
     }
 
     // MARK: - Modules
 
     public var allModules: [any BrimModule] { registry.allModules }
+
+    public func isModuleEnabled(_ id: String) -> Bool {
+        settings.enabledModules.contains(id)
+    }
+
+    public func showSettings(_ tab: SettingsTab) {
+        settingsTab = tab
+        openSettings()
+    }
     public var disabledModules: [any BrimModule] { registry.disabledModules }
 
     /// Installed players for the Follow picker. Empty when neither Spotify nor Music is installed.
@@ -80,7 +126,12 @@ public final class AppModel: ObservableObject {
             .first?.sources ?? []
     }
 
-    /// Peek and expanded both count as "a panel is open"; the media module starts its helper here.
+    /// The module drawn in the live notch's ears.
+    public var liveModule: (any BrimModule)? {
+        liveModuleID.flatMap { registry.module(id: $0) }
+    }
+
+    /// An open panel on any screen counts as "a panel is open".
     public func setPanelActive(screenID: String, active: Bool) {
         let wasActive = !activePanels.isEmpty
         if active {
@@ -96,6 +147,21 @@ public final class AppModel: ObservableObject {
     private func syncModules() {
         registry.apply(enabledIDs: settings.enabledModules)
         activeModules = registry.enabledModules
+        recomputeLiveModule()
+    }
+
+    private func syncLiveActivity() {
+        for module in registry.allModules {
+            (module as? MediaModuleControlling)?.setLiveActivityEnabled(settings.showLiveActivity)
+        }
+        recomputeLiveModule()
+    }
+
+    private func recomputeLiveModule() {
+        let next = settings.showLiveActivity
+            ? LiveActivityResolver.winner(activeModules.map { ($0.id, liveActivities[$0.id]) })
+            : nil
+        if next != liveModuleID { liveModuleID = next }
     }
 
     /// Synchronous so a toggle reflects immediately. A module that needs a permission should go through
@@ -161,6 +227,16 @@ public final class AppModel: ObservableObject {
         let normalized = sourceID?.isEmpty == true ? nil : sourceID
         guard settings.preferredPlayerBundleID != normalized else { return }
         settings.preferredPlayerBundleID = normalized
+    }
+
+    /// The panel's source menu cannot show an explanation, so a player that needs Automation takes the user
+    /// to Settings → Media, which explains it and has the Grant button. The choice itself is kept.
+    public func choosePlayerFromPanel(_ sourceID: String?) {
+        setPreferredPlayer(sourceID)
+        refreshAutomationStatus()
+        if sourceID != nil, automationStatus != .granted {
+            showSettings(.media)
+        }
     }
 
     // MARK: - Agents
@@ -232,6 +308,37 @@ public final class AppModel: ObservableObject {
         agentNotificationError = agentNotificationAuthorization.isAuthorized
             ? nil
             : "macOS banners are unavailable; Brim will show a notch alert."
+    }
+
+    public func showTestAgentSession() {
+        agentModule?.showTestSession()
+    }
+
+    // MARK: - Claude Code
+
+    public func refreshClaudeHook() {
+        claudeHook?.refresh()
+        claudeHookStatus = claudeHook?.status
+    }
+
+    public func installClaudeHook() {
+        perform { try $0.install() }
+    }
+
+    public func removeClaudeHook() {
+        perform { try $0.uninstall() }
+    }
+
+    private func perform(_ action: (ClaudeHookInstalling) throws -> Void) {
+        guard let claudeHook else { return }
+        do {
+            try action(claudeHook)
+            claudeHookError = nil
+        } catch {
+            claudeHookError = error.localizedDescription
+            Log.agent.error("Claude Code hook change failed: \(error.localizedDescription, privacy: .public)")
+        }
+        claudeHookStatus = claudeHook.status
     }
 
     public func openNotificationSettings() {

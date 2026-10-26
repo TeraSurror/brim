@@ -30,12 +30,13 @@ public final class AppController {
         let model = AppModel(
             store: JSONSettingsStore(),
             loginItems: SMLoginItemService(),
-            registry: ModuleRegistry(modules: [ClockModule(), media, agent]),
-            permissions: SystemPermissionService()
+            registry: ModuleRegistry(modules: [media, ClockModule(), agent]),
+            permissions: SystemPermissionService(),
+            claudeHook: ClaudeHookInstaller()
         )
         // The panel's source menu writes through settings so the choice survives a restart.
         media.onPreferredPlayerChange = { [weak model] sourceID in
-            model?.setPreferredPlayer(sourceID)
+            model?.choosePlayerFromPanel(sourceID)
         }
 
         self.model = model
@@ -59,6 +60,7 @@ public final class AppController {
             return Diagnostics.report(
                 settings: self.model.settings,
                 screens: self.screens,
+                liveModuleID: self.model.liveModuleID,
                 media: MediaDiagnostics(
                     helperBundled: MediaAdapterLocation.bundled() != nil,
                     helperAvailable: self.coordinator.isAvailable,
@@ -70,7 +72,8 @@ public final class AppController {
                     listening: self.agent.isListening,
                     summary: self.agent.summary,
                     notificationsEnabled: self.agent.notificationsEnabled,
-                    notificationAuthorization: self.agent.notificationAuthorization
+                    notificationAuthorization: self.agent.notificationAuthorization,
+                    claudeHook: self.model.claudeHookStatus
                 )
             )
         }
@@ -91,6 +94,11 @@ public final class AppController {
 
         Task { [weak self] in
             await self?.model.refreshAgentNotificationAuthorization()
+        }
+
+        // Nothing is visible on a notched Mac until something plays, so say hello once.
+        if model.isFirstLaunch {
+            model.showSettings(.general)
         }
 
         Log.general.info("Brim started with \(self.model.activeModules.count, privacy: .public) active module(s)")

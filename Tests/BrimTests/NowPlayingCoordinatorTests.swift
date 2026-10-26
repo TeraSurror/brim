@@ -77,21 +77,78 @@ final class NowPlayingCoordinatorTests: XCTestCase {
 
         automation.snapshots[.music] = nil
         adapter.emit(track(.spotify, title: "From Spotify"))
-        scheduler.advance(by: 1)
+        // The panel is closed, so the followed player is polled every three seconds.
+        scheduler.advance(by: 3)
 
         XCTAssertEqual(coordinator.current?.title, "From Spotify")
     }
 
-    func testPreferredPlayerIsPolledOncePerSecond() {
+    func testPreferredPlayerIsPolledOncePerSecondWithThePanelOpen() {
+        coordinator.startMonitoring()
+        coordinator.follow(ScriptablePlayer.music.rawValue)
+        coordinator.setPanelVisible(true)
+        // Opening the panel reads right away instead of waiting out the slow cadence.
+        XCTAssertEqual(automation.reads.count, 2)
+        automation.resetReads()
+
+        scheduler.advance(by: 0.5)
+        XCTAssertEqual(automation.reads.count, 0)
+
+        scheduler.advance(by: 0.5)
+        XCTAssertEqual(automation.reads.count, 1)
+    }
+
+    func testPreferredPlayerIsPolledEveryThreeSecondsWithThePanelClosed() {
         coordinator.startMonitoring()
         coordinator.follow(ScriptablePlayer.music.rawValue)
         XCTAssertEqual(automation.reads.count, 1)
 
-        scheduler.advance(by: 0.5)
+        scheduler.advance(by: 2.9)
         XCTAssertEqual(automation.reads.count, 1)
-
-        scheduler.advance(by: 0.5)
+        scheduler.advance(by: 0.1)
         XCTAssertEqual(automation.reads.count, 2)
+    }
+
+    func testAnExitedHelperIsRestartedWithABackoff() {
+        coordinator.startMonitoring()
+        XCTAssertEqual(adapter.startCount, 1)
+
+        adapter.fail()
+        scheduler.advance(by: 4.9)
+        XCTAssertEqual(adapter.startCount, 1)
+        scheduler.advance(by: 0.1)
+        XCTAssertEqual(adapter.startCount, 2)
+
+        adapter.fail()
+        scheduler.advance(by: 29.9)
+        XCTAssertEqual(adapter.startCount, 2)
+        scheduler.advance(by: 0.1)
+        XCTAssertEqual(adapter.startCount, 3)
+
+        adapter.fail()
+        scheduler.advance(by: 300)
+        XCTAssertEqual(adapter.startCount, 4)
+        adapter.fail()
+        scheduler.advance(by: 300)
+        XCTAssertEqual(adapter.startCount, 5)
+    }
+
+    func testASuccessfulUpdateResetsTheBackoff() {
+        coordinator.startMonitoring()
+        adapter.fail()
+        scheduler.advance(by: 5)
+        adapter.emit(track(.music))
+        adapter.fail()
+        scheduler.advance(by: 5)
+        XCTAssertEqual(adapter.startCount, 3)
+    }
+
+    func testNoRestartAfterMonitoringStops() {
+        coordinator.startMonitoring()
+        adapter.fail()
+        coordinator.stopMonitoring()
+        scheduler.advance(by: 600)
+        XCTAssertEqual(adapter.startCount, 1)
     }
 
     func testPlayerIsNotPolledUntilItRuns() {

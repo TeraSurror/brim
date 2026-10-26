@@ -21,7 +21,7 @@ struct AgentExpandedView: View {
                                 AgentSessionRow(
                                     session: session,
                                     now: context.date,
-                                    onOpenProject: { module.openProject(session) },
+                                    onOpen: { module.open(session) },
                                     onDismiss: { module.dismiss(session) }
                                 )
                             }
@@ -105,7 +105,7 @@ struct AgentExpandedView: View {
 private struct AgentSessionRow: View {
     let session: AgentSession
     let now: Date
-    let onOpenProject: () -> Void
+    let onOpen: () -> Void
     let onDismiss: () -> Void
 
     var body: some View {
@@ -154,17 +154,17 @@ private struct AgentSessionRow: View {
             .accessibilityElement(children: .combine)
             .accessibilityLabel(accessibilityLabel)
 
-            if session.cwd?.isEmpty == false {
-                Button(action: onOpenProject) {
-                    Image(systemName: "folder")
+            if let action = openAction {
+                Button(action: onOpen) {
+                    Image(systemName: action.symbol)
                         .font(.system(size: 9, weight: .semibold))
                         .foregroundStyle(.white.opacity(0.35))
                         .frame(width: 18, height: 18)
                         .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
-                .help("Open \(session.displayTitle) in Finder")
-                .accessibilityLabel("Open \(session.agentName) session \(session.displayTitle) in Finder")
+                .help(action.help)
+                .accessibilityLabel("\(action.help): \(session.agentName), \(session.displayTitle)")
             }
 
             Button(action: onDismiss) {
@@ -184,6 +184,13 @@ private struct AgentSessionRow: View {
             RoundedRectangle(cornerRadius: 10, style: .continuous)
                 .fill(tint)
         )
+    }
+
+    /// The app wins when known; the module falls back to the folder if that app is no longer installed.
+    private var openAction: (symbol: String, help: String)? {
+        if session.app != nil { return ("arrow.up.forward.app", "Switch to the app running this session") }
+        if session.cwd != nil { return ("folder", "Open the project in Finder") }
+        return nil
     }
 
     private var tint: Color {

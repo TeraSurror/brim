@@ -115,10 +115,100 @@ final class MediaModuleTests: XCTestCase {
         XCTAssertEqual(service.seeks, [42])
     }
 
-    func testModuleAsksForAutomationWithAnExplanation() {
-        XCTAssertEqual(module.requiredPermissions, [.automation])
-        XCTAssertFalse(module.permissionExplanation.isEmpty)
-        XCTAssertTrue(module.permissionExplanation.contains("Automation"))
+    func testEnablingTheModuleNeedsNoPermission() {
+        // Automation is optional and only asked for when the user follows Spotify or Music.
+        XCTAssertTrue(module.requiredPermissions.isEmpty)
+    }
+
+    // MARK: - Live notch
+
+    private func paused(_ nowPlaying: NowPlaying) -> NowPlaying {
+        var copy = nowPlaying
+        copy.isPlaying = false
+        return copy
+    }
+
+    func testLiveNotchKeepsTheHelperRunningWithThePanelClosed() {
+        module.setEnabled(true)
+        module.setLiveActivityEnabled(true)
+        XCTAssertEqual(service.startCount, 1)
+
+        module.setPanelActive(true)
+        module.setPanelActive(false)
+        scheduler.advance(by: 5)
+        XCTAssertEqual(service.stopCount, 0)
+    }
+
+    func testTurningTheLiveNotchOffStopsAfterTheGraceWhenNoPanelIsOpen() {
+        module.setEnabled(true)
+        module.setLiveActivityEnabled(true)
+        module.setLiveActivityEnabled(false)
+        scheduler.advance(by: 1)
+        XCTAssertEqual(service.stopCount, 1)
+    }
+
+    func testDisablingStopsEvenWithTheLiveNotchOn() {
+        module.setEnabled(true)
+        module.setLiveActivityEnabled(true)
+        module.setEnabled(false)
+        XCTAssertEqual(service.stopCount, 1)
+    }
+
+    func testPlayingMediaPublishesALiveActivity() {
+        var published: [LiveActivity?] = []
+        let subscription = module.liveActivityPublisher.sink { published.append($0) }
+        defer { subscription.cancel() }
+
+        module.setEnabled(true)
+        module.setLiveActivityEnabled(true)
+        service.emit(track())
+
+        XCTAssertEqual(module.liveActivity, LiveActivity(priority: .media))
+        XCTAssertEqual(published.last, LiveActivity(priority: .media))
+    }
+
+    func testPausingHidesTheLiveNotchOnlyAfterTheGracePeriod() {
+        module.setEnabled(true)
+        module.setLiveActivityEnabled(true)
+        let playing = track()
+        service.emit(playing)
+        service.emit(paused(playing))
+
+        scheduler.advance(by: MediaModule.liveGracePeriod - 0.1)
+        XCTAssertNotNil(module.liveActivity)
+        scheduler.advance(by: 0.1)
+        XCTAssertNil(module.liveActivity)
+    }
+
+    func testResumingWithinTheGraceKeepsTheLiveNotch() {
+        module.setEnabled(true)
+        module.setLiveActivityEnabled(true)
+        let playing = track()
+        service.emit(playing)
+        service.emit(nil)
+        scheduler.advance(by: 1)
+        service.emit(track(title: "Next"))
+        scheduler.advance(by: 10)
+
+        XCTAssertNotNil(module.liveActivity)
+    }
+
+    func testNoLiveActivityWhenTheSettingIsOffOrTheModuleIsDisabled() {
+        module.setEnabled(true)
+        service.emit(track())
+        XCTAssertNil(module.liveActivity)
+
+        module.setLiveActivityEnabled(true)
+        XCTAssertNotNil(module.liveActivity)
+
+        module.setEnabled(false)
+        XCTAssertNil(module.liveActivity)
+    }
+
+    func testPanelVisibilityIsForwardedForThePollCadence() {
+        module.setPanelActive(true)
+        module.setPanelActive(false)
+        XCTAssertEqual(service.panelVisibility, [true, false])
     }
 
     func testSourcesFollowTheService() {

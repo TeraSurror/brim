@@ -3,8 +3,10 @@ import Foundation
 /// Resolves the two data paths into one current track: the MediaRemote helper (everything, artwork) and
 /// direct Apple Events for the player the user chose (Spotify or Music).
 ///
-/// The helper is only started while a panel is visible. The preferred-player poll is also only active
-/// then, and it stops entirely if the player is not running or Automation was not granted.
+/// The helper runs while the media module needs it (the live notch or an open panel). The preferred-player
+/// poll runs only then too: every second with the panel open, every three seconds while it is closed, and
+/// slower still while the player is not running or Automation was not granted. A helper that exits is
+/// restarted with a backoff, because with the live notch on nothing else would restart it.
 @MainActor
 public final class NowPlayingCoordinator: NowPlayingProviding {
     public private(set) var current: NowPlaying?
@@ -25,6 +27,12 @@ public final class NowPlayingCoordinator: NowPlayingProviding {
     private var automatedSnapshot: NowPlaying?
     private var adapterFailed = false
     private var pollTask: TaskHandle?
+    private var restartTask: TaskHandle?
+    private var restartAttempts = 0
+    private var panelVisible = false
+
+    /// Delays before restarting an exited helper; the last one repeats.
+    public static let restartBackoff: [TimeInterval] = [5, 30, 300]
 
     public init(
         adapter: MediaAdapterStreaming,
@@ -53,6 +61,7 @@ public final class NowPlayingCoordinator: NowPlayingProviding {
         guard !isMonitoring else { return }
         isMonitoring = true
         adapterFailed = false
+        restartAttempts = 0
         updateAvailability()
         refreshSources()
         adapter.start()
@@ -64,10 +73,19 @@ public final class NowPlayingCoordinator: NowPlayingProviding {
         isMonitoring = false
         pollTask?.cancel()
         pollTask = nil
+        restartTask?.cancel()
+        restartTask = nil
         adapter.stop()
         adapterSnapshot = nil
         automatedSnapshot = nil
         publish(nil)
+    }
+
+    public func setPanelVisible(_ visible: Bool) {
+        guard visible != panelVisible else { return }
+        panelVisible = visible
+        // Pick up the faster cadence right away instead of after the current slow wait.
+        if visible { refreshAutomation() }
     }
 
     public func follow(_ sourceID: String?) {
@@ -112,6 +130,7 @@ public final class NowPlayingCoordinator: NowPlayingProviding {
         guard isMonitoring else { return }
         adapterSnapshot = track
         adapterFailed = false
+        restartAttempts = 0
         updateAvailability()
         recompute()
     }
@@ -123,6 +142,21 @@ public final class NowPlayingCoordinator: NowPlayingProviding {
         updateAvailability()
         recompute()
         Log.media.error("Now Playing is falling back: \(message, privacy: .public)")
+        scheduleRestart()
+    }
+
+    private func scheduleRestart() {
+        guard isMonitoring, adapter.isAvailable, restartTask == nil else { return }
+        let backoff = Self.restartBackoff
+        let delay = backoff[min(restartAttempts, backoff.count - 1)]
+        restartAttempts += 1
+        restartTask = scheduler.schedule(after: delay) { [weak self] in
+            guard let self else { return }
+            self.restartTask = nil
+            guard self.isMonitoring else { return }
+            Log.media.info("Restarting the MediaRemote helper")
+            self.adapter.start()
+        }
     }
 
     private func refreshAutomation() {
@@ -147,9 +181,10 @@ public final class NowPlayingCoordinator: NowPlayingProviding {
         pollTask = nil
         guard isMonitoring, let player = preferredPlayer else { return }
 
-        // One second while following a live player; a slower retry while waiting for it to launch.
+        // Fast enough for the progress bar while the panel is open; the live notch only needs play state.
         let ready = discovery.isRunning(player) && automation.isPermitted(for: player)
-        pollTask = scheduler.schedule(after: ready ? 1 : 2) { [weak self] in
+        let interval: TimeInterval = ready ? (panelVisible ? 1 : 3) : (panelVisible ? 2 : 10)
+        pollTask = scheduler.schedule(after: interval) { [weak self] in
             guard let self else { return }
             self.pollTask = nil
             self.refreshAutomation()

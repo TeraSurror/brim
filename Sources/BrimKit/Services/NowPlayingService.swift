@@ -14,9 +14,11 @@ public protocol NowPlayingProviding: AnyObject {
     var onUpdate: ((NowPlaying?) -> Void)? { get set }
     var onSourcesChange: (([NowPlayingSource]) -> Void)? { get set }
 
-    /// Starts the helper (and the preferred player's poll) while a panel is visible.
+    /// Starts the helper (and the preferred player's poll) while the live notch or a panel needs it.
     func startMonitoring()
     func stopMonitoring()
+    /// The panel is open; a followed player is polled faster so the progress bar stays accurate.
+    func setPanelVisible(_ visible: Bool)
     /// `nil` follows whatever macOS reports; otherwise the bundle identifier of an installed player.
     func follow(_ sourceID: String?)
     func send(_ command: PlayerCommand)

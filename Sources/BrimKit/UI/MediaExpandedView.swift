@@ -32,10 +32,11 @@ struct MediaExpandedView: View {
             let position = scrubbing ?? track.position(at: context.date)
 
             GeometryReader { proxy in
-                // The card is a fixed 220 pt tall. Keep the artwork, progress and transport as one
-                // vertically centered group so the card has no dead space and the transport is centered
-                // on the card rather than on the text column beside the artwork.
-                let compact = proxy.size.width < 320
+                // Keep the artwork, progress and transport as one vertically centered group so the card has
+                // no dead space and the transport is centered on the card rather than on the text column.
+                // Each module card is about 290 pt wide (PanelMetrics), so the full layout is the norm;
+                // compact only applies on a screen too narrow for the panel's usual width.
+                let compact = proxy.size.width < 240
                 let artworkSize: CGFloat = compact ? 84 : 96
 
                 VStack(spacing: 8) {
@@ -49,7 +50,7 @@ struct MediaExpandedView: View {
                                     .foregroundStyle(.white)
                                     .lineLimit(1)
                                 Spacer(minLength: 4)
-                                sourceMenu(track, compact: compact)
+                                sourceMenu(track)
                             }
 
                             Text(track.artist.isEmpty ? track.source.name : track.artist)
@@ -176,7 +177,8 @@ struct MediaExpandedView: View {
 
     // MARK: - Source
 
-    private func sourceMenu(_ track: NowPlaying, compact: Bool) -> some View {
+    /// Icon-only: the "Playing in …" line below the artist already names the source.
+    private func sourceMenu(_ track: NowPlaying) -> some View {
         Menu {
             Button {
                 module.choosePlayer(nil)
@@ -198,11 +200,6 @@ struct MediaExpandedView: View {
             HStack(spacing: 3) {
                 Image(systemName: track.source.symbolName)
                     .font(.system(size: 8, weight: .semibold))
-                if !compact {
-                    Text(track.source.name)
-                        .font(.system(size: 9, weight: .semibold, design: .rounded))
-                        .lineLimit(1)
-                }
                 Image(systemName: "chevron.down")
                     .font(.system(size: 6, weight: .bold))
             }

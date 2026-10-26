@@ -14,6 +14,7 @@ struct AgentDiagnostics {
     let summary: AgentSummary
     let notificationsEnabled: Bool
     let notificationAuthorization: NotificationAuthorization
+    let claudeHook: ClaudeHookStatus?
 }
 
 @MainActor
@@ -28,6 +29,7 @@ enum Diagnostics {
     static func report(
         settings: Settings,
         screens: ScreenProviding,
+        liveModuleID: String? = nil,
         media: MediaDiagnostics? = nil,
         agents: AgentDiagnostics? = nil
     ) -> String {
@@ -48,6 +50,11 @@ enum Diagnostics {
             )
         }
 
+        lines += ["", "Panel:"]
+        lines.append("  opens on: \(settings.opensOnHover ? "hover" : "click")")
+        lines.append(
+            "  live notch: \(settings.showLiveActivity ? "on" : "off"), showing \(liveModuleID ?? "nothing")")
+
         if let media {
             lines += ["", "Media:"]
             lines.append("  helper: bundled \(media.helperBundled), available \(media.helperAvailable)")
@@ -66,6 +73,7 @@ enum Diagnostics {
                 "  notifications: \(agents.notificationsEnabled ? "on" : "off"), "
                     + "\(agents.notificationAuthorization.title)"
             )
+            lines.append("  Claude Code hook: \(agents.claudeHook.map { "\($0)" } ?? "unknown")")
         }
 
         let encoder = JSONEncoder()

@@ -57,6 +57,7 @@ public struct AgentRoster: Equatable, Sendable {
             }
             if let cost = event.costUSD { session.costUSD = cost }
             if let cwd = event.cwd { session.cwd = cwd }
+            if let app = event.app { session.app = app }
             session.updatedAt = event.timestamp
             sessions[index] = session
         } else {

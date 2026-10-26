@@ -1,7 +1,7 @@
 import SwiftUI
 
-/// M1's placeholder module: a glanceable clock. It updates once a minute and only exists in the view tree
-/// while the panel is visible, so a collapsed notch costs nothing.
+/// A glanceable clock and date. It updates once a minute and only exists in the view tree while the panel
+/// is open, so a collapsed notch costs nothing. It has no live activity: the menu bar already shows the time.
 @MainActor
 public final class ClockModule: BrimModule {
     public let id = "clock"
@@ -17,29 +17,8 @@ public final class ClockModule: BrimModule {
         isEnabled = enabled
     }
 
-    public func compactView() -> AnyView {
-        AnyView(ClockCompactView())
-    }
-
     public func expandedView() -> AnyView {
         AnyView(ClockExpandedView())
-    }
-}
-
-private struct ClockCompactView: View {
-    var body: some View {
-        TimelineView(.everyMinute) { context in
-            HStack(spacing: 7) {
-                Image(systemName: "clock")
-                    .font(.system(size: 12, weight: .semibold))
-                Text(context.date, format: .dateTime.hour().minute())
-                    .font(.system(size: 15, weight: .semibold, design: .rounded))
-                    .monospacedDigit()
-            }
-            .foregroundStyle(.white.opacity(0.92))
-            .accessibilityElement(children: .combine)
-            .accessibilityLabel("Time")
-        }
     }
 }
 
@@ -57,9 +36,14 @@ private struct ClockExpandedView: View {
                         .font(.system(size: 54, weight: .semibold, design: .rounded))
                         .monospacedDigit()
                         .foregroundStyle(.white)
+                        // A 12-hour "10:45 PM" is wider than a narrow card; shrink rather than wrap.
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.5)
                     Text(context.date, format: .dateTime.weekday(.wide).month(.wide).day())
                         .font(.system(size: 14, weight: .medium, design: .rounded))
                         .foregroundStyle(.white.opacity(0.55))
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.8)
                 }
             }
         }

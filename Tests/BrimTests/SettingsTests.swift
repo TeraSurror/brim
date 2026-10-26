@@ -15,6 +15,17 @@ final class SettingsTests: XCTestCase {
     func testMissingFileGivesDefaults() {
         let store = JSONSettingsStore(fileURL: directory.appendingPathComponent("settings.json"))
         XCTAssertEqual(store.load(), Settings())
+        XCTAssertFalse(store.hasSavedSettings)
+    }
+
+    func testNewInstallsStartWithNowPlayingAndTheClock() {
+        XCTAssertEqual(Settings().enabledModules, ["media", "clock"])
+    }
+
+    func testSavingMarksTheStoreAsSaved() {
+        let store = JSONSettingsStore(fileURL: directory.appendingPathComponent("settings.json"))
+        store.save(Settings())
+        XCTAssertTrue(store.hasSavedSettings)
     }
 
     func testRoundTripKeepsEveryField() {
@@ -83,6 +94,31 @@ final class SettingsTests: XCTestCase {
         XCTAssertEqual(settings.agentFinishedRetentionMinutes, 30)
         XCTAssertEqual(settings.enabledModules, ["clock", "agents"])
         XCTAssertFalse(settings.agentNotificationsEnabled)
+    }
+
+    func testSchemaFourFileMigratesWithHoverAndLiveNotchOn() throws {
+        let data = Data(
+            #"{"schemaVersion":4,"hoverDelay":0.3,"agentNotificationsEnabled":true,"enabledModules":["agents"]}"#
+                .utf8
+        )
+        let settings = try SettingsMigrator.migrate(data)
+
+        XCTAssertEqual(settings.schemaVersion, Settings.currentSchemaVersion)
+        XCTAssertEqual(settings.hoverDelay, 0.3)
+        XCTAssertTrue(settings.agentNotificationsEnabled)
+        XCTAssertEqual(settings.enabledModules, ["agents"])
+        XCTAssertTrue(settings.opensOnHover)
+        XCTAssertTrue(settings.showLiveActivity)
+    }
+
+    func testOpenModeAndLiveNotchRoundTrip() throws {
+        var settings = Settings()
+        settings.opensOnHover = false
+        settings.showLiveActivity = false
+        let data = try JSONEncoder().encode(settings)
+        let decoded = try SettingsMigrator.migrate(data)
+        XCTAssertFalse(decoded.opensOnHover)
+        XCTAssertFalse(decoded.showLiveActivity)
     }
 
     func testAgentRetentionIsClampedToItsRange() throws {

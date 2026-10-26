@@ -57,6 +57,11 @@ final class NowPlayingTests: XCTestCase {
         XCTAssertEqual(source.name, "awesome player")
     }
 
+    func testBrowsersWhoseBundleIDsEndInBrowserGetTheirOwnNames() {
+        XCTAssertEqual(NowPlayingSource(bundleIdentifier: "com.brave.Browser").name, "Brave")
+        XCTAssertEqual(NowPlayingSource(bundleIdentifier: "company.thebrowser.Browser").name, "Arc")
+    }
+
     func testArtworkEqualityUsesTheContentHash() {
         let first = NowPlayingArtwork(data: Data("image".utf8))
         let second = NowPlayingArtwork(data: Data("image".utf8))

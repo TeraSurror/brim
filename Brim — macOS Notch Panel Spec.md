@@ -61,10 +61,10 @@ Each service is a Swift protocol with one real implementation and one fake for t
 | Type | Fields |
 | --- | --- |
 | `ScreenInfo` | id, frame, notchRect (optional), topInset |
-| `PanelState` | `.collapsed`, `.peek`, `.expanded` |
-| `BrimModule` | id, title, compact view, expanded view, required permissions, isEnabled |
+| `PanelState` | `.collapsed`, `.expanded` (the peek was removed in F9) |
+| `BrimModule` | id, title, live activity and ear views, expanded view, required permissions, isEnabled |
 | `NowPlaying` | title, artist, album, artwork, duration, elapsed, isPlaying, sourceApp |
-| `Settings` | hoverDelay, collapseDelay, launchAtLogin, enabledModules, showOnNonNotchedDisplays, schemaVersion |
+| `Settings` | hoverDelay, collapseDelay, opensOnHover, showLiveActivity, launchAtLogin, enabledModules, showOnNonNotchedDisplays, media and agent options, schemaVersion |
 
 **Reuse from Speakeasy** (copy and adapt, don't depend on it)
 
@@ -90,7 +90,7 @@ A borderless, non-activating `NSPanel` with level above `.mainMenu`, `collection
 
 **F2. Hover and expand**
 
-A pure state machine: collapsed → peek on hover → expanded on click or longer hover → collapsed when the pointer leaves, after a delay.
+A pure state machine: collapsed → peek on hover → expanded on click or longer hover → collapsed when the pointer leaves, after a delay. *Amended by F9: hover opens the full panel directly.*
 
 - [ ] Hovering the notch shows a short peek within the hover delay (default 150 ms).
 - [ ] Clicking, or hovering longer, opens the full panel with a spring animation.
@@ -129,7 +129,7 @@ Known risk, check first: since macOS 15.4, MediaRemote's now-playing calls refus
 
 Prototype option 1; fall back to option 2 if it breaks.
 
-- [ ] Compact view: small artwork on the left of the notch and a playing indicator on the right while media plays.
+- [ ] Compact view: small artwork on the left of the notch and a playing indicator on the right while media plays. *Delivered by F10 (live notch).*
 - [ ] Expanded view: artwork, title, artist, progress bar, and previous / play-pause / next buttons.
 - [ ] Works with Spotify, Music.app and Safari (YouTube); updates within 1 s of a track change.
 - [ ] When nothing is playing, the module hides or shows a quiet empty state.
@@ -166,6 +166,94 @@ Agent alerts are opt-in, local, and never requested at launch.
 - [ ] Settings schema 4 stores the opt-in flag and migrates older files without losing values.
 - [ ] Diagnostics include the alert setting and authorization state.
 
+## UX revision: live notch
+
+A review against NotchNook (Oct 25, 2026) found that Brim's notch shows nothing until it is hovered, so the two things
+Brim is for, what's playing and an agent waiting on you, aren't glanceable. Hovering also passed through a peek that
+duplicated the panel, agent alerts led to Finder instead of the agent, and the headline features were hard to set up.
+This revision makes the collapsed notch carry live content and fixes the setup and alert problems from the same review.
+
+It amends F2 (the peek is gone), F6 (the compact view is now the live notch) and F8 (alert placement and action).
+Where it conflicts with them, this section wins. Build it before the remaining M3 features.
+
+**F9. Hover opens the panel**
+
+The live notch (F10) is now the glanceable state, so hovering goes straight to the full panel.
+
+- [ ] Resting on the notch, the live notch or the handle for the hover delay (default 150 ms) opens the full panel.
+  There is no intermediate peek; `PanelState` is `.collapsed` or `.expanded`.
+- [ ] Settings → Open the panel: "On hover" (default) or "On click". In click mode hovering does nothing and a click
+  opens the panel.
+- [ ] Leaving still collapses after the collapse delay, and coming back cancels it.
+- [ ] Opening the panel plays a light haptic tap on trackpads that support it.
+- [ ] With Reduce Motion on, the panel appears and disappears with a cross-fade instead of growing.
+- [ ] Settings schema 5 stores the open mode; older files migrate without losing values.
+- [ ] State machine tests cover hover mode, click mode and the live notch hit area.
+
+**F10. Live notch**
+
+When a module has something live, the collapsed notch widens sideways at menu-bar height and shows it in the two
+"ears" beside the hardware notch, the way NotchNook shows Now Playing.
+
+- [ ] While media plays, the left ear shows the artwork and the right ear an animated playing indicator, within 1 s of
+  playback starting. It hides 3 s after playback pauses or stops, so a track change doesn't make it flicker.
+- [ ] An agent session in `waiting` or `error` shows its status glyph (orange or red), with a count when several
+  sessions share it. This takes priority over media. A `working` session shows a quiet glyph only when nothing else
+  is live. Opening the panel acknowledges failures: they stay listed but stop lighting the notch.
+- [ ] Modules publish a `LiveActivity` (a priority) and draw their own ear views; the shell shows the highest-priority
+  activity, with ties going to module order. The window shell knows nothing about media or agents.
+- [ ] Hovering or clicking the live notch opens the panel. Clicks on the ears never fall through to the menu bar.
+- [ ] With nothing live, the collapsed notch is invisible exactly as in F1.
+- [ ] On screens without a notch, live content replaces the handle with a small black pill at the top center (under
+  the same "screens without a notch" setting).
+- [ ] Settings → "Show activity beside the notch" (default on). Off restores the hover-only behaviour. Stored in
+  schema 5.
+- [ ] While that setting is on and Now Playing is enabled, the media helper runs continuously rather than only while
+  the panel is open. It stops when the module is disabled, when the setting is turned off and no panel is open, and
+  when Brim quits or crashes. If it exits, Brim restarts it with a backoff (5 s, 30 s, then every 5 minutes).
+- [ ] Brim plus its helper stay under 0.5% CPU and 80 MB while idle. Polling a followed player over Apple Events slows
+  to every 3 s while the panel is closed.
+
+**F11. Agent alerts that lead somewhere**
+
+- [ ] The notch alert hangs from the top edge of the screen under the pointer (falling back to the notched screen)
+  and uses the panel's shape, so it reads as the notch dropping down.
+- [ ] Opening a panel dismisses a visible notch alert.
+- [ ] Clicking anywhere on the alert performs its open action. Hovering it pauses the auto-dismiss.
+- [ ] Events accept an optional `app` field: a bundle identifier, validated and never executed. The open action on
+  alerts, notifications and rows brings that app to the front when it is installed, and otherwise opens `cwd` in
+  Finder. Rows without either have no open action.
+- [ ] The Claude Code hook reports `app` from the terminal or editor that runs it and uses the project folder name as
+  the session title.
+
+**F12. First run and setup**
+
+- [ ] New installs enable Now Playing and Clock. Existing settings keep their module list.
+- [ ] Enabling Now Playing asks for nothing. Automation is explained and requested only when the user chooses to follow
+  Spotify or Music. Choosing a player in the panel without Automation opens Settings → Media instead of failing
+  silently.
+- [ ] Opening Brim again (Finder, Spotlight, `open -a Brim`) opens Settings. The first launch opens Settings with a
+  short note on how to use the notch.
+- [ ] Settings → Agents can install the Claude Code hook, after an explanation of exactly what changes. It writes
+  `~/.brim/claude-hook.sh`, backs up `~/.claude/settings.json` and merges Brim's hooks into it without touching other
+  hooks. It refuses to edit a file it cannot parse, shows whether the hook is installed or out of date, can remove the
+  hook again, and can show a test session in the panel.
+- [ ] Settings has General, Media, Agents, Modules and About tabs, with each module's options in its own tab.
+
+**F13. The panel fits its modules**
+
+- [ ] The expanded panel is about 290 pt wide per enabled module (at least 460 pt), clamped to the screen. Enabling,
+  disabling or reordering modules resizes it.
+- [ ] The clock's time stays on one line at any width.
+- [ ] With two modules enabled, the media card uses its full layout (album and source name visible).
+
+**Not designed yet** (each needs its own acceptance criteria)
+
+- Full-screen behaviour: hide the panel while a full-screen app is in front, and choose which displays show Brim.
+- Keyboard: Esc to close, a global shortcut to open, and a panel that can take keyboard focus (quick prompt needs it).
+- Drag and drop onto the notch (the file tray and send-to-assistant need it).
+- Gestures on the notch: swipe to skip tracks, scroll to open.
+
 **Later M3 features (not designed yet)**
 
 - **Quick prompt.** A text box in the expanded panel that sends a prompt to a chosen assistant. Needs per-provider
@@ -188,7 +276,7 @@ Build these only after M2 is stable; each is independent.
 
 | Area | Requirement |
 | --- | --- |
-| Performance | Under 0.5% CPU when idle; under 80 MB memory. No polling faster than 1 s while collapsed; prefer notifications. |
+| Performance | Under 0.5% CPU when idle; under 80 MB memory, counting Brim's helper processes. No polling faster than 1 s while collapsed; prefer notifications. |
 | Responsiveness | Hover-to-peek under 100 ms after the delay; animations at display refresh rate. |
 | Permissions | Never at launch. Each module requests its own permission when enabled, after an in-app screen explaining why. Degrade gracefully when denied. |
 | Privacy | No network access in M1 and M2. Any network use (M3) is per module, opt-in, and documented. No analytics. |

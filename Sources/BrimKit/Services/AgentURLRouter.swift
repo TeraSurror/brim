@@ -39,6 +39,7 @@ public enum AgentURLRouter {
                 detail: values["detail"],
                 costUSD: values["cost"].flatMap(Double.init),
                 cwd: values["cwd"],
+                app: values["app"],
                 timestamp: AgentTimestamp.parse(values["timestamp"]) ?? now
             )
             return event.map(AgentCommand.event)

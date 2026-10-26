@@ -21,21 +21,38 @@ final class PanelGeometryTests: XCTestCase {
         XCTAssertTrue(geometry.isNotched)
     }
 
-    func testPeekAndExpandedAreCenteredAndTopAnchored() {
+    func testExpandedIsCenteredAndTopAnchored() {
         let metrics = PanelMetrics()
         let geometry = PanelGeometry(screen: notched, metrics: metrics)
-
-        let peek = geometry.frame(for: .peek)
         let expanded = geometry.frame(for: .expanded)
 
-        XCTAssertEqual(peek.minY, 0)
         XCTAssertEqual(expanded.minY, 0)
-        XCTAssertEqual(peek.midX, notched.frame.midX)
         XCTAssertEqual(expanded.midX, notched.frame.midX)
-        XCTAssertEqual(peek.height, metrics.peekHeight)
         XCTAssertEqual(expanded.height, metrics.expandedHeight)
-        XCTAssertGreaterThan(peek.width, notched.notchRect!.width)
         XCTAssertEqual(expanded.width, metrics.expandedWidth)
+    }
+
+    func testLiveNotchAddsAnEarOnEachSideAtNotchHeight() {
+        let metrics = PanelMetrics()
+        let geometry = PanelGeometry(screen: notched, metrics: metrics)
+        let notch = notched.notchRect!
+        let live = geometry.frame(for: .collapsed, live: true)
+
+        XCTAssertEqual(live, geometry.liveFrame)
+        XCTAssertEqual(live.width, notch.width + metrics.liveEarWidth * 2)
+        XCTAssertEqual(live.height, notch.height)
+        XCTAssertEqual(live.midX, notch.midX)
+        XCTAssertEqual(live.minY, notch.minY)
+    }
+
+    func testLiveNotchOnAPlainScreenIsATopCenteredPill() {
+        let metrics = PanelMetrics()
+        let geometry = PanelGeometry(screen: plain, metrics: metrics)
+        let live = geometry.liveFrame
+
+        XCTAssertEqual(live.size, metrics.livePillSize)
+        XCTAssertEqual(live.midX, plain.frame.midX)
+        XCTAssertEqual(live.minY, plain.frame.minY)
     }
 
     func testPlainScreenCollapsedIsASlimCenteredHandle() {
@@ -59,8 +76,19 @@ final class PanelGeometryTests: XCTestCase {
         let metrics = PanelMetrics()
         let geometry = PanelGeometry(screen: narrow, metrics: metrics)
 
-        XCTAssertEqual(geometry.frame(for: .peek).width, 300 - metrics.screenMargin * 2)
         XCTAssertEqual(geometry.frame(for: .expanded).width, 300 - metrics.screenMargin * 2)
+        XCTAssertEqual(geometry.liveFrame.width, min(metrics.livePillSize.width, 300 - metrics.screenMargin * 2))
+    }
+
+    func testExpandedWidthGrowsWithTheModuleCount() {
+        XCTAssertEqual(PanelMetrics.expandedWidth(forModuleCount: 0), PanelMetrics.minimumExpandedWidth)
+        XCTAssertEqual(PanelMetrics.expandedWidth(forModuleCount: 1), PanelMetrics.minimumExpandedWidth)
+        // Two cards of 290 + 14 spacing + 18 padding each side.
+        XCTAssertEqual(PanelMetrics.expandedWidth(forModuleCount: 2), 630)
+        XCTAssertEqual(PanelMetrics.expandedWidth(forModuleCount: 3), 934)
+
+        let geometry = PanelGeometry(screen: notched, metrics: PanelMetrics(moduleCount: 3))
+        XCTAssertEqual(geometry.frame(for: .expanded).width, 934)
     }
 
     func testCollapsedWindowFollowsSecondScreenOrigin() {
@@ -80,5 +108,7 @@ final class PanelGeometryTests: XCTestCase {
         XCTAssertFalse(geometry.contains(wellBelow, in: .expanded, slop: 12))
         XCTAssertTrue(geometry.contains(CGPoint(x: 756, y: 16), in: .collapsed))
         XCTAssertFalse(geometry.contains(CGPoint(x: 100, y: 16), in: .collapsed))
+        XCTAssertFalse(geometry.contains(CGPoint(x: 630, y: 16), in: .collapsed))
+        XCTAssertTrue(geometry.contains(CGPoint(x: 630, y: 16), in: .collapsed, live: true))
     }
 }

@@ -1,10 +1,15 @@
 import AppKit
 import SwiftUI
 
-/// A short-lived card under the notch. Used when macOS won't deliver a notification (notably ad-hoc dev
-/// builds), so the opt-in alert still works. It never activates Brim or steals keyboard focus.
+/// A short-lived card that drops from the top edge of the screen the user is on. Used when macOS won't
+/// deliver a notification (notably ad-hoc dev builds), so the opt-in alert still works. It never activates
+/// Brim or steals keyboard focus, and it stays while the pointer rests on it.
 @MainActor
 public final class AgentAlertPresenter: AgentAlertPresenting {
+    public static let displayDuration: TimeInterval = 7
+    /// Time left after the pointer moves off a card it had paused.
+    public static let resumeDuration: TimeInterval = 3
+
     private let screens: ScreenProviding
     private let scheduler: Scheduling
     private var window: NotchWindow?
@@ -18,9 +23,8 @@ public final class AgentAlertPresenter: AgentAlertPresenting {
     public func present(_ notification: AgentNotification, onOpen: @escaping () -> Void) {
         dismiss()
 
-        guard let screen = screens.screens.first(where: { $0.hasNotch }) ?? screens.screens.first else {
-            return
-        }
+        let pointer = Self.cgPoint(from: NSEvent.mouseLocation)
+        guard let screen = AgentAlertGeometry.screen(for: pointer, in: screens.screens) else { return }
         let cgFrame = AgentAlertGeometry.frame(for: screen)
         let window = NotchWindow(frame: Self.appKitFrame(for: cgFrame))
         window.hasShadow = true
@@ -28,13 +32,22 @@ public final class AgentAlertPresenter: AgentAlertPresenting {
 
         let root = AgentAlertView(
             notification: notification,
+            topInset: screen.topInset,
             onOpen: { [weak self] in
                 onOpen()
                 self?.dismiss()
             },
             onDismiss: { [weak self] in self?.dismiss() }
         )
-        window.contentView = NSHostingView(rootView: root)
+        let hosting = PanelHostingView(rootView: root)
+        hosting.onMouseEntered = { [weak self] in
+            self?.dismissTask?.cancel()
+            self?.dismissTask = nil
+        }
+        hosting.onMouseExited = { [weak self] in
+            self?.scheduleDismiss(after: Self.resumeDuration)
+        }
+        window.contentView = hosting
         window.orderFrontRegardless()
         NSAnimationContext.runAnimationGroup { context in
             context.duration = 0.18
@@ -42,9 +55,7 @@ public final class AgentAlertPresenter: AgentAlertPresenting {
         }
 
         self.window = window
-        dismissTask = scheduler.schedule(after: 7) { [weak self] in
-            self?.dismiss()
-        }
+        scheduleDismiss(after: Self.displayDuration)
     }
 
     public func dismiss() {
@@ -62,6 +73,14 @@ public final class AgentAlertPresenter: AgentAlertPresenting {
         }
     }
 
+    private func scheduleDismiss(after delay: TimeInterval) {
+        guard window != nil else { return }
+        dismissTask?.cancel()
+        dismissTask = scheduler.schedule(after: delay) { [weak self] in
+            self?.dismiss()
+        }
+    }
+
     /// Converts the pure CoreGraphics frame (top-left origin) to AppKit's bottom-left screen space.
     private static func appKitFrame(for cgFrame: CGRect) -> CGRect {
         let primaryHeight = NSScreen.screens.first?.frame.height ?? 0
@@ -71,5 +90,10 @@ public final class AgentAlertPresenter: AgentAlertPresenting {
             width: cgFrame.width,
             height: cgFrame.height
         )
+    }
+
+    private static func cgPoint(from point: NSPoint) -> CGPoint {
+        let primaryHeight = NSScreen.screens.first?.frame.height ?? 0
+        return CGPoint(x: point.x, y: primaryHeight - point.y)
     }
 }

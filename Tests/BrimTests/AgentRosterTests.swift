@@ -54,6 +54,19 @@ final class AgentRosterTests: XCTestCase {
         XCTAssertEqual(session.updatedAt, base.addingTimeInterval(10))
     }
 
+    func testTheAppIsKeptUntilAnEventNamesANewOne() throws {
+        var roster = AgentRoster()
+        roster.apply(try XCTUnwrap(AgentEvent(
+            agentID: "claude-code", sessionID: "s1", status: .working, app: "com.apple.Terminal", timestamp: base)))
+        roster.apply(try event(status: .waiting, at: 1))
+        XCTAssertEqual(roster.sessions.first?.app, "com.apple.Terminal")
+
+        roster.apply(try XCTUnwrap(AgentEvent(
+            agentID: "claude-code", sessionID: "s1", status: .working, app: "com.microsoft.VSCode",
+            timestamp: base.addingTimeInterval(2))))
+        XCTAssertEqual(roster.sessions.first?.app, "com.microsoft.VSCode")
+    }
+
     func testAFinishedEventWithoutDetailClearsStaleProgress() throws {
         var roster = AgentRoster()
         roster.apply(try event(status: .working, detail: "Running tests"))
