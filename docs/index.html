@@ -1,0 +1,639 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Brim — the notch, put to work</title>
+<meta name="description" content="Brim is a native macOS app that turns the MacBook notch into a live panel for media, coding agents and quick prompts to Claude.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%23111'/%3E%3Cpath d='M14 18h36v8a10 10 0 0 1-10 10H24a10 10 0 0 1-10-10z' fill='%23fff'/%3E%3C/svg%3E">
+<style>
+  :root {
+    --bg: #fbfbfa;
+    --bg-raised: #ffffff;
+    --bg-sunken: #f2f2f0;
+    --text: #1c1c1e;
+    --text-muted: #5f6066;
+    --text-faint: #8a8b90;
+    --border: #e4e4e1;
+    --accent: #0a6cdf;
+    --accent-soft: #e6f0fc;
+    --warn: #b35c00;
+    --ok: #1f8a3b;
+    --code-bg: #f4f4f2;
+    --notch: #000000;
+    --shadow: 0 1px 2px rgba(0,0,0,.04), 0 8px 24px rgba(0,0,0,.06);
+    --radius: 14px;
+    --mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
+    --sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", Helvetica, Arial, sans-serif;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #111113;
+      --bg-raised: #18181b;
+      --bg-sunken: #0c0c0e;
+      --text: #ececee;
+      --text-muted: #a3a3aa;
+      --text-faint: #75757c;
+      --border: #2a2a2e;
+      --accent: #5aa2ff;
+      --accent-soft: #15253b;
+      --warn: #ffab4a;
+      --ok: #4cc96d;
+      --code-bg: #1c1c20;
+      --shadow: 0 1px 2px rgba(0,0,0,.4), 0 8px 24px rgba(0,0,0,.35);
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #111113;
+    --bg-raised: #18181b;
+    --bg-sunken: #0c0c0e;
+    --text: #ececee;
+    --text-muted: #a3a3aa;
+    --text-faint: #75757c;
+    --border: #2a2a2e;
+    --accent: #5aa2ff;
+    --accent-soft: #15253b;
+    --warn: #ffab4a;
+    --ok: #4cc96d;
+    --code-bg: #1c1c20;
+    --shadow: 0 1px 2px rgba(0,0,0,.4), 0 8px 24px rgba(0,0,0,.35);
+  }
+
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; scroll-padding-top: 76px; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font: 16px/1.6 var(--sans);
+    -webkit-font-smoothing: antialiased;
+  }
+  a { color: var(--accent); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  code { font: .88em/1.5 var(--mono); background: var(--code-bg); padding: .12em .38em; border-radius: 6px; }
+  kbd {
+    font: 600 .82em var(--sans); padding: .1em .45em; border-radius: 6px;
+    border: 1px solid var(--border); border-bottom-width: 2px; background: var(--bg-raised);
+  }
+
+  /* Top bar */
+  .topbar {
+    position: sticky; top: 0; z-index: 10;
+    display: flex; align-items: center; gap: 16px;
+    padding: 12px 24px;
+    background: color-mix(in srgb, var(--bg) 86%, transparent);
+    backdrop-filter: saturate(180%) blur(14px);
+    -webkit-backdrop-filter: saturate(180%) blur(14px);
+    border-bottom: 1px solid var(--border);
+  }
+  .brand { display: flex; align-items: center; gap: 10px; font-weight: 700; color: var(--text); letter-spacing: -.01em; }
+  .brand:hover { text-decoration: none; }
+  .brand-mark { width: 28px; height: 28px; border-radius: 8px; background: #111; display: grid; place-items: center; }
+  .brand-mark span { width: 16px; height: 7px; background: #fff; border-radius: 0 0 5px 5px; margin-top: -9px; }
+  .topbar nav { margin-left: auto; display: flex; gap: 18px; font-size: 14px; }
+  .topbar nav a { color: var(--text-muted); }
+  .topbar nav a:hover { color: var(--text); text-decoration: none; }
+  .theme-toggle {
+    border: 1px solid var(--border); background: var(--bg-raised); color: var(--text-muted);
+    border-radius: 8px; padding: 4px 9px; font: 13px var(--sans); cursor: pointer;
+  }
+
+  /* Hero */
+  .hero { padding: 72px 24px 56px; text-align: center; border-bottom: 1px solid var(--border); }
+  .hero h1 { font-size: clamp(36px, 6vw, 60px); line-height: 1.05; letter-spacing: -.035em; margin: 0 0 16px; }
+  .hero p.lede { font-size: clamp(17px, 2.2vw, 20px); color: var(--text-muted); max-width: 640px; margin: 0 auto 28px; }
+  .cta { display: inline-flex; flex-wrap: wrap; gap: 10px; justify-content: center; }
+  .btn {
+    display: inline-flex; align-items: center; gap: 8px; padding: 10px 18px; border-radius: 999px;
+    font-weight: 600; font-size: 15px; border: 1px solid var(--border); color: var(--text); background: var(--bg-raised);
+  }
+  .btn:hover { text-decoration: none; border-color: var(--text-faint); }
+  .btn.primary { background: var(--text); color: var(--bg); border-color: var(--text); }
+
+  /* Notch illustration */
+  .screen {
+    position: relative; max-width: 680px; height: 210px; margin: 48px auto 0;
+    border-radius: 18px 18px 0 0; overflow: hidden;
+    background: linear-gradient(160deg, #6d8fbf 0%, #4a6a9a 45%, #2d3f63 100%);
+    box-shadow: var(--shadow);
+  }
+  .menubar {
+    position: absolute; inset: 0 0 auto 0; height: 30px; display: flex; align-items: center; justify-content: space-between;
+    padding: 0 16px; color: rgba(255,255,255,.92); font: 600 12px var(--sans);
+    background: rgba(20,24,34,.28); backdrop-filter: blur(8px);
+  }
+  .menubar .left, .menubar .right { display: flex; gap: 14px; }
+  .menubar .right { font-weight: 500; }
+  .notch {
+    position: absolute; top: 0; left: 50%; transform: translateX(-50%);
+    width: 262px; height: 32px; background: var(--notch); border-radius: 0 0 11px 11px;
+    display: flex; align-items: center; justify-content: space-between; padding: 0 12px;
+    transition: width .45s cubic-bezier(.16,.92,.24,1), height .45s cubic-bezier(.16,.92,.24,1), border-radius .45s;
+  }
+  .notch .art {
+    width: 20px; height: 20px; border-radius: 5px;
+    background: linear-gradient(135deg, #f7b267, #f25f5c 55%, #6c5ce7);
+  }
+  .wave { display: flex; gap: 2px; align-items: center; height: 14px; }
+  .wave i { width: 2px; border-radius: 2px; background: rgba(255,255,255,.85); animation: wave 1s ease-in-out infinite; }
+  .wave i:nth-child(1) { height: 6px; animation-delay: -.2s; }
+  .wave i:nth-child(2) { height: 12px; animation-delay: -.5s; }
+  .wave i:nth-child(3) { height: 8px; animation-delay: -.1s; }
+  .wave i:nth-child(4) { height: 13px; animation-delay: -.7s; }
+  .wave i:nth-child(5) { height: 7px; animation-delay: -.35s; }
+  @keyframes wave { 50% { transform: scaleY(.4); } }
+  .panel-demo {
+    position: absolute; top: 0; left: 50%; transform: translateX(-50%);
+    width: 460px; max-width: calc(100% - 32px); height: 170px; border-radius: 0 0 26px 26px; background: #000;
+    padding: 40px 16px 16px; display: grid; grid-template-columns: 1fr 1fr; gap: 10px;
+    opacity: 0; pointer-events: none; transition: opacity .3s;
+  }
+  .screen:hover .panel-demo, .screen:focus-within .panel-demo { opacity: 1; }
+  .screen:hover .notch, .screen:focus-within .notch { opacity: 0; }
+  .card { background: #151517; border-radius: 14px; padding: 12px; color: #fff; font: 12px/1.35 var(--sans); text-align: left; }
+  .card b { display: block; font-size: 13px; margin: 6px 0 2px; }
+  .card small { color: #9a9aa2; }
+  .card .row { display: flex; gap: 10px; align-items: center; }
+  .card .art-lg { width: 44px; height: 44px; border-radius: 9px; background: linear-gradient(135deg, #f7b267, #f25f5c 55%, #6c5ce7); flex: none; }
+  .card .bar { height: 3px; background: #333; border-radius: 2px; margin-top: 12px; overflow: hidden; }
+  .card .bar span { display: block; width: 42%; height: 100%; background: #fff; }
+  .card .agent { display: flex; gap: 8px; align-items: center; margin-top: 6px; }
+  .dot { width: 9px; height: 9px; border-radius: 50%; background: #ff9f0a; flex: none; }
+  .dot.ok { background: #30d158; }
+  .hint { margin-top: 12px; font-size: 13px; color: var(--text-faint); }
+
+  /* Layout */
+  .layout { display: grid; grid-template-columns: 220px minmax(0, 1fr); gap: 48px; max-width: 1120px; margin: 0 auto; padding: 48px 24px 96px; }
+  .toc { position: sticky; top: 84px; align-self: start; font-size: 14px; }
+  .toc p { margin: 0 0 8px; font-size: 12px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--text-faint); }
+  .toc a { display: block; padding: 5px 10px; border-radius: 8px; color: var(--text-muted); }
+  .toc a:hover, .toc a.active { background: var(--accent-soft); color: var(--accent); text-decoration: none; }
+  main { min-width: 0; }
+  section { padding-bottom: 32px; margin-bottom: 40px; border-bottom: 1px solid var(--border); }
+  section:last-child { border-bottom: 0; }
+  h2 { font-size: 30px; letter-spacing: -.025em; line-height: 1.2; margin: 0 0 12px; }
+  h3 { font-size: 19px; letter-spacing: -.01em; margin: 28px 0 8px; }
+  p { margin: 0 0 14px; }
+  .muted { color: var(--text-muted); }
+  ul, ol { padding-left: 22px; margin: 0 0 14px; }
+  li { margin: 4px 0; }
+
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 14px; margin: 20px 0; }
+  .feature { background: var(--bg-raised); border: 1px solid var(--border); border-radius: var(--radius); padding: 18px; }
+  .feature .icon { font-size: 20px; line-height: 1; margin-bottom: 10px; }
+  .feature h4 { margin: 0 0 6px; font-size: 16px; }
+  .feature p { margin: 0; color: var(--text-muted); font-size: 14.5px; }
+
+  .table-wrap { overflow-x: auto; margin: 16px 0 20px; border: 1px solid var(--border); border-radius: 12px; }
+  table { width: 100%; border-collapse: collapse; font-size: 14.5px; background: var(--bg-raised); }
+  th, td { text-align: left; padding: 10px 14px; border-bottom: 1px solid var(--border); vertical-align: top; }
+  th { font-size: 12.5px; text-transform: uppercase; letter-spacing: .05em; color: var(--text-faint); background: var(--bg-sunken); }
+  tr:last-child td { border-bottom: 0; }
+
+  pre {
+    position: relative; margin: 14px 0 20px; padding: 16px 18px; overflow-x: auto;
+    background: var(--code-bg); border: 1px solid var(--border); border-radius: 12px;
+    font: 13.5px/1.6 var(--mono);
+  }
+  pre code { background: none; padding: 0; font-size: inherit; }
+  .copy {
+    position: absolute; top: 8px; right: 8px; padding: 3px 9px; font: 12px var(--sans);
+    border-radius: 7px; border: 1px solid var(--border); background: var(--bg-raised); color: var(--text-muted); cursor: pointer;
+    opacity: 0; transition: opacity .15s;
+  }
+  pre:hover .copy, .copy:focus { opacity: 1; }
+
+  .callout { border: 1px solid var(--border); border-left: 3px solid var(--accent); background: var(--bg-raised); border-radius: 10px; padding: 12px 16px; margin: 16px 0; font-size: 15px; }
+  .callout.warn { border-left-color: var(--warn); }
+  .callout p:last-child { margin: 0; }
+
+  .steps { counter-reset: step; list-style: none; padding: 0; }
+  .steps li { counter-increment: step; position: relative; padding-left: 40px; margin: 12px 0; }
+  .steps li::before {
+    content: counter(step); position: absolute; left: 0; top: 0; width: 26px; height: 26px; border-radius: 50%;
+    display: grid; place-items: center; font: 700 13px var(--sans); background: var(--text); color: var(--bg);
+  }
+
+  .status { display: inline-block; padding: 1px 9px; border-radius: 999px; font-size: 12.5px; font-weight: 600; white-space: nowrap; }
+  .status.done { background: color-mix(in srgb, var(--ok) 16%, transparent); color: var(--ok); }
+  .status.wip { background: color-mix(in srgb, var(--warn) 16%, transparent); color: var(--warn); }
+  .status.todo { background: var(--bg-sunken); color: var(--text-faint); }
+
+  details { border: 1px solid var(--border); border-radius: 12px; background: var(--bg-raised); margin: 10px 0; }
+  summary { cursor: pointer; padding: 12px 16px; font-weight: 600; list-style: none; }
+  summary::-webkit-details-marker { display: none; }
+  summary::before { content: "›"; display: inline-block; width: 16px; transition: transform .15s; color: var(--text-faint); }
+  details[open] summary::before { transform: rotate(90deg); }
+  details > div { padding: 0 16px 6px 32px; }
+
+  footer { border-top: 1px solid var(--border); padding: 28px 24px; text-align: center; color: var(--text-faint); font-size: 14px; }
+
+  @media (max-width: 860px) {
+    .layout { grid-template-columns: 1fr; gap: 0; padding-top: 32px; }
+    .toc { display: none; }
+    .topbar nav { display: none; }
+    .topbar { padding: 12px 16px; }
+    .theme-toggle { margin-left: auto; }
+    .hero { padding: 48px 16px 40px; }
+    .layout { padding-left: 16px; padding-right: 16px; }
+    .screen { height: 230px; }
+    .panel-demo { grid-template-columns: 1fr; height: 210px; }
+    .panel-demo .card:last-child { display: none; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    html { scroll-behavior: auto; }
+    .wave i { animation: none; }
+  }
+</style>
+</head>
+<body>
+
+<header class="topbar">
+  <a class="brand" href="#top" aria-label="Brim home"><span class="brand-mark" aria-hidden="true"><span></span></span>Brim</a>
+  <nav aria-label="Primary">
+    <a href="#features">Features</a>
+    <a href="#install">Install</a>
+    <a href="#agents">Agents</a>
+    <a href="#quick-prompt">Quick Prompt</a>
+    <a href="#troubleshooting">Help</a>
+    <a href="https://github.com/TeraSurror/brim">GitHub</a>
+  </nav>
+  <button class="theme-toggle" type="button" id="theme-toggle" aria-label="Switch color theme">Theme</button>
+</header>
+
+<div class="hero" id="top">
+  <h1>The notch, put to work.</h1>
+  <p class="lede">Brim turns the MacBook notch into a live panel. It shows what's playing and which coding agent needs you, and grows into media controls, agent status and a prompt box for Claude.</p>
+  <div class="cta">
+    <a class="btn primary" href="#install">Install from source</a>
+    <a class="btn" href="https://github.com/TeraSurror/brim">View on GitHub</a>
+  </div>
+
+  <div class="screen" tabindex="0" aria-label="Illustration: the notch with album art and a waveform beside it; hovering shows the open panel">
+    <div class="menubar" aria-hidden="true">
+      <div class="left"><span></span><span>Finder</span><span>File</span><span>Edit</span><span>View</span></div>
+      <div class="right"><span>Mon 10:45</span></div>
+    </div>
+    <div class="notch" aria-hidden="true">
+      <span class="art"></span>
+      <span class="wave"><i></i><i></i><i></i><i></i><i></i></span>
+    </div>
+    <div class="panel-demo" aria-hidden="true">
+      <div class="card">
+        <div class="row"><span class="art-lg"></span><div><b>Ninajirachi</b><small>Now playing · Music</small></div></div>
+        <div class="bar"><span></span></div>
+      </div>
+      <div class="card">
+        <small>AGENTS</small>
+        <div class="agent"><span class="dot"></span><div><b>brim</b><small>Waiting for your input</small></div></div>
+        <div class="agent"><span class="dot ok"></span><small>parser · Finished</small></div>
+      </div>
+    </div>
+  </div>
+  <p class="hint">Hover the illustration to open the panel.</p>
+</div>
+
+<div class="layout">
+  <aside class="toc" aria-label="On this page">
+    <p>On this page</p>
+    <a href="#overview">Overview</a>
+    <a href="#features">Features</a>
+    <a href="#install">Install and run</a>
+    <a href="#using">Using Brim</a>
+    <a href="#agents">Connecting agents</a>
+    <a href="#quick-prompt">Quick Prompt</a>
+    <a href="#privacy">Privacy</a>
+    <a href="#status">Project status</a>
+    <a href="#development">Development</a>
+    <a href="#troubleshooting">Troubleshooting</a>
+    <a href="#license">License</a>
+  </aside>
+
+  <main>
+    <section id="overview">
+      <h2>Overview</h2>
+      <p>Brim is a native macOS app written in Swift with SwiftUI and AppKit. It sits in the notch at the top of a MacBook display, where the pointer already goes. While something is live, such as music or an agent waiting on you, the notch widens to show it. When you want more, a rounded black panel grows down out of the notch.</p>
+      <p>It runs locally with no account, no analytics, and no Dock or menu bar icon. On a display without a notch, Brim lives in a slim handle at the top center of the screen.</p>
+      <div class="callout"><p><strong>Requirements:</strong> macOS 14 Sonoma or later. The main target is an Apple Silicon MacBook with a notch; any Mac works through the handle.</p></div>
+    </section>
+
+    <section id="features">
+      <h2>Features</h2>
+      <p class="muted">A small window shell with pluggable modules. The shell decides when the panel opens; modules decide what it shows.</p>
+
+      <div class="grid">
+        <div class="feature"><div class="icon">🎵</div><h4>Live notch</h4><p>Artwork and a waveform beside the notch while media plays; an orange or red glyph when an agent waits or fails. Invisible when nothing is live.</p></div>
+        <div class="feature"><div class="icon">🖥️</div><h4>Out of the way</h4><p>Hides on any display where an app is full screen and returns when you leave. Choose all displays, the notched one or the main one.</p></div>
+        <div class="feature"><div class="icon">👆</div><h4>Opens your way</h4><p>Hover or click the notch, scroll down on it, or press a global shortcut that opens the panel ready for typing.</p></div>
+        <div class="feature"><div class="icon">↔️</div><h4>Gestures</h4><p>Scroll down to open and up to close. Swipe the media ears left or right to skip tracks without opening anything.</p></div>
+        <div class="feature"><div class="icon">📥</div><h4>Drag and drop</h4><p>Drag files or text to the notch and the panel opens into drop zones for the modules that accept them.</p></div>
+        <div class="feature"><div class="icon">🧩</div><h4>Modules</h4><p>Each enabled module gets its own card and the panel widens to fit. Turn them on, off and reorder them in Settings.</p></div>
+      </div>
+
+      <h3>Modules</h3>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Module</th><th>What it does</th><th>Needs</th></tr></thead>
+          <tbody>
+            <tr><td><strong>Now Playing</strong></td><td>Artwork, title, artist, album, progress with seeking and transport buttons for anything macOS reports as playing: Spotify, Music, Safari, Brave, Chrome, Arc, Firefox, YouTube and more. Can follow Spotify or Music directly.</td><td>Nothing. Following Spotify or Music asks for Automation.</td></tr>
+            <tr><td><strong>Clock</strong></td><td>Time and date at a glance.</td><td>Nothing.</td></tr>
+            <tr><td><strong>Agent Status</strong></td><td>Live rows for Claude Code, Codex, Cursor, VS Code or any script: working, waiting, done and failed, with elapsed time and cost. Optional alerts that switch to the agent's terminal or editor.</td><td>Nothing. Local socket only.</td></tr>
+            <tr><td><strong>Quick Prompt</strong></td><td>A prompt bar across the panel that asks Claude through your own <code>claude</code> CLI with read-only access to a folder you pick. Answers stream into the panel.</td><td>Claude Code installed and logged in.</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section id="install">
+      <h2>Install and run</h2>
+      <p>Brim is built from source; there is no signed download yet. You need the Xcode command-line tools (Swift 5.10 or later) and, for the first build only, <a href="https://cmake.org">CMake</a> and network access to build the media helper.</p>
+<pre><code>xcode-select --install       # if you don't have the command-line tools
+brew install cmake           # first build only
+
+git clone https://github.com/TeraSurror/brim.git
+cd brim
+./build.sh                   # builds build/Brim.app (release, ad-hoc signed)
+open build/Brim.app</code></pre>
+      <p>To keep it, copy <code>build/Brim.app</code> to <code>/Applications</code> and turn on <strong>Settings → General → Launch at login</strong>.</p>
+
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Command</th><th>What it does</th></tr></thead>
+          <tbody>
+            <tr><td><code>./build.sh</code></td><td>Release build of <code>build/Brim.app</code>, ad-hoc signed</td></tr>
+            <tr><td><code>./build.sh debug</code></td><td>Debug build of the same bundle</td></tr>
+            <tr><td><code>BRIM_SKIP_MEDIA_ADAPTER=1 ./build.sh</code></td><td>Build without the media helper (no CMake); everything except Now Playing works</td></tr>
+            <tr><td><code>./scripts/build-media-adapter.sh --force</code></td><td>Rebuild the media helper</td></tr>
+            <tr><td><code>swift build</code> / <code>swift test</code></td><td>Compile, or run the unit tests (no helper needed)</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <p>On first launch Brim opens Settings with a short welcome note, because a quiet notch shows nothing until something plays. Open Brim again at any time (Finder, Spotlight or <code>open -a Brim</code>) to bring Settings back.</p>
+      <div class="callout warn"><p><strong>Ad-hoc signing:</strong> every rebuild looks like a new app to macOS, so granted Automation and the login item can be dropped; re-grant them after a rebuild. macOS notification banners also need a signed build, so the development build uses Brim's own notch alert instead.</p></div>
+    </section>
+
+    <section id="using">
+      <h2>Using Brim</h2>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>To…</th><th>Do this</th></tr></thead>
+          <tbody>
+            <tr><td>Open the panel</td><td>Hover the notch (or the handle), click it, scroll down on it, or press your shortcut</td></tr>
+            <tr><td>Close it</td><td>Move away, scroll up on its top edge, press <kbd>Esc</kbd>, or click elsewhere</td></tr>
+            <tr><td>Skip a track</td><td>Swipe left (next) or right (previous) on the ears while media plays</td></tr>
+            <tr><td>Open Settings</td><td>The gear in the panel, right-click the panel, or open Brim again</td></tr>
+            <tr><td>Quit</td><td>Right-click the panel → Quit Brim</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3>Settings</h3>
+      <ul>
+        <li><strong>General</strong>: open on hover or click, hover and collapse delays, the global shortcut, the live notch, which displays show Brim, launch at login.</li>
+        <li><strong>Media</strong>: Now Playing on or off, which player to follow, Automation.</li>
+        <li><strong>Agents</strong>: Agent Status, the Claude Code connection, alerts, how long finished sessions stay, the socket for other tools, and Quick Prompt's <code>claude</code> location.</li>
+        <li><strong>Modules</strong>: turn modules on or off and reorder them.</li>
+        <li><strong>About</strong>: version and <em>Copy Diagnostics</em> for bug reports.</li>
+      </ul>
+      <p class="muted">Settings are stored as versioned JSON in <code>~/Library/Application Support/Brim/settings.json</code>. Unreadable files are moved aside, never deleted.</p>
+
+      <h3>Keyboard shortcut</h3>
+      <p>Record one in <strong>Settings → General → Keyboard → Open Brim</strong>; there is no default, so it never collides with another app. It opens the panel on the display under the pointer without switching away from your app, stays open while you work in it, and closes with <kbd>Esc</kbd>, the shortcut again, or a click elsewhere. It also opens over a full-screen app, because you asked for it.</p>
+    </section>
+
+    <section id="agents">
+      <h2>Connecting coding agents</h2>
+      <p>Turn on <strong>Agent Status</strong> in Settings → Agents. Brim opens a Unix socket at <code>~/Library/Application Support/Brim/agent.sock</code> (owner-only, removed on quit) and accepts <code>brim://agent</code> links. Nothing leaves the Mac.</p>
+
+      <h3>Claude Code</h3>
+      <p><strong>Settings → Agents → Claude Code → Connect…</strong> shows exactly what changes, then writes <code>~/.brim/claude-hook.sh</code>, backs up <code>~/.claude/settings.json</code> and adds Brim's hooks next to yours. Start a new Claude Code session afterwards. <em>Update…</em> appears when an older hook is installed; <em>Disconnect…</em> removes it.</p>
+
+      <h3>Any other tool</h3>
+      <p>Write one JSON object per line to the socket:</p>
+<pre><code>printf '%s\n' '{"agent":"codex","session":"demo","status":"working","title":"Fix the parser","detail":"Running tests"}' \
+  | nc -U "$HOME/Library/Application Support/Brim/agent.sock"</code></pre>
+      <p>or open a link:</p>
+<pre><code>open -g 'brim://agent?agent=codex&amp;session=demo&amp;status=waiting&amp;title=Approve%20a%20tool%20call'</code></pre>
+
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Field</th><th>Required</th><th>Meaning</th></tr></thead>
+          <tbody>
+            <tr><td><code>agent</code></td><td>yes</td><td>Tool identifier, e.g. <code>claude-code</code>, <code>codex</code>, <code>cursor</code></td></tr>
+            <tr><td><code>session</code></td><td>yes</td><td>Stable ID for one session</td></tr>
+            <tr><td><code>status</code></td><td>yes</td><td><code>working</code>, <code>waiting</code>, <code>done</code> or <code>error</code></td></tr>
+            <tr><td><code>title</code>, <code>detail</code></td><td>no</td><td>Shown on the row (trimmed and length-limited)</td></tr>
+            <tr><td><code>costUSD</code></td><td>no</td><td>Session cost so far</td></tr>
+            <tr><td><code>cwd</code></td><td>no</td><td>Project folder; rows and alerts can open it in Finder</td></tr>
+            <tr><td><code>app</code></td><td>no</td><td>Bundle ID of the terminal or editor. Validated, never executed; alerts switch to it</td></tr>
+            <tr><td><code>timestamp</code></td><td>no</td><td>ISO 8601; older events never overwrite newer ones</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p><code>brim://agent?action=dismiss&amp;agent=…&amp;session=…</code> removes one row and <code>action=clear</code> clears the list. Waiting sessions sort first, then failures, working and done; finished sessions disappear after 10 minutes (adjustable).</p>
+
+      <h3>Alerts</h3>
+      <p>A separate opt-in. When a session newly needs input or fails while the panel is closed, a card drops from the top of the screen you are on, or a macOS banner appears on a signed build. Clicking it brings the session's terminal or editor forward.</p>
+    </section>
+
+    <section id="quick-prompt">
+      <h2>Quick Prompt</h2>
+      <p>Ask Claude from the notch, using the Claude Code you already have. Turn it on in <strong>Settings → Modules</strong>; Brim explains what it does first, and there is no macOS permission.</p>
+      <ol class="steps">
+        <li>Open the panel. The shortcut puts the cursor straight in the prompt field. Type your question.</li>
+        <li>Pick what Claude may read with the folder chip: the project of your most recent agent session (the default), a recent folder, any folder, or none for plain chat.</li>
+        <li>Press <kbd>Return</kbd>. The answer streams in place of the cards, with lists and code rendered and a Copy button. Ask follow-ups in the same bar; <em>New</em> starts over; <em>Done</em> or <kbd>Esc</kbd> returns to the cards.</li>
+      </ol>
+      <p>Close the panel while Claude is answering and the notch shows a quiet working glyph, then a check mark until you look.</p>
+      <div class="callout"><p><strong>Read-only by design.</strong> Brim runs your <code>claude</code> CLI with only Read, Grep and Glob and no MCP servers. Claude can read files in the chosen folder but cannot edit files, run commands or fetch from the web. The prompt goes in on standard input, never through a shell. Brim itself makes no network request; Claude Code does, under your login.</p></div>
+    </section>
+
+    <section id="privacy">
+      <h2>Privacy and permissions</h2>
+      <ul>
+        <li><strong>No network access from Brim.</strong> Media, agents and settings stay on the Mac. Quick Prompt's traffic belongs to Claude Code and happens only when you send a prompt.</li>
+        <li><strong>No analytics, ever.</strong></li>
+        <li><strong>No permission prompts at launch.</strong> A feature asks only when you turn it on, after an explanation, and keeps working in a limited form if you decline.</li>
+      </ul>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Feature</th><th>Permission</th><th>When it is asked</th></tr></thead>
+          <tbody>
+            <tr><td>Following Spotify or Music directly</td><td>Automation (per player)</td><td>When you pick the player in Settings → Media</td></tr>
+            <tr><td>Agent alerts as macOS banners</td><td>Notifications</td><td>When you turn alerts on (signed builds only)</td></tr>
+            <tr><td>Shortcut, gestures, drag and drop</td><td>none</td><td>—</td></tr>
+            <tr><td>Now Playing, Agent Status, Quick Prompt</td><td>none</td><td>—</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="muted">Now Playing uses the third-party <a href="https://github.com/ungive/mediaremote-adapter">ungive/mediaremote-adapter</a> v0.7.7 (BSD-3), built from a pinned commit and run as a separate process through <code>/usr/bin/perl</code>. It is never linked into Brim and stops when Brim quits.</p>
+    </section>
+
+    <section id="status">
+      <h2>Project status</h2>
+      <p>Version 0.1.0, built milestone by milestone from the <a href="https://github.com/TeraSurror/brim/blob/main/Brim%20%E2%80%94%20macOS%20Notch%20Panel%20Spec.md">project spec</a>.</p>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Area</th><th>Features</th><th>State</th></tr></thead>
+          <tbody>
+            <tr><td>Notch panel shell</td><td>F1–F5</td><td><span class="status done">Done</span></td></tr>
+            <tr><td>Media controls</td><td>F6</td><td><span class="status done">Done</span></td></tr>
+            <tr><td>Agent status and alerts</td><td>F7–F8</td><td><span class="status done">Done</span></td></tr>
+            <tr><td>Live notch revision, full-screen hiding</td><td>F9–F14</td><td><span class="status done">Done</span></td></tr>
+            <tr><td>Displays, keyboard, gestures, drag and drop</td><td>F15–F18</td><td><span class="status done">Done</span> <span class="muted">· some manual checks pending</span></td></tr>
+            <tr><td>Quick Prompt</td><td>F19</td><td><span class="status wip">Implemented</span> <span class="muted">· typing needs a hands-on check</span></td></tr>
+            <tr><td>Send to assistant: files, clipboard, screenshot, selection</td><td>F20</td><td><span class="status todo">Designed</span></td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section id="development">
+      <h2>Development</h2>
+<pre><code>swift build        # compile
+swift test         # unit tests (XCTest)
+./build.sh debug &amp;&amp; open build/Brim.app
+log stream --predicate 'subsystem == "com.harshshelar.brim"'</code></pre>
+<pre><code>Sources/BrimKit/
+├── App/        composition root, app delegate, settings window, shared AppModel
+├── Window/     every NSPanel: notch windows, pointer/scroll/drag tracking, notch alert
+├── State/      pure logic: state machine, geometry, gestures, drag tracking, agent roster
+├── Modules/    BrimModule protocol, registry, Clock, Now Playing, Agent Status, Quick Prompt
+├── Services/   protocols + real implementations (screens, media helper, socket, hot keys, claude CLI…)
+├── Model/      value types: ScreenInfo, Settings, NowPlaying, AgentEvent, HotKey…
+├── Support/    logging and diagnostics
+└── UI/         SwiftUI panel, cards and settings (never touches NSPanel)</code></pre>
+      <h3>Architecture rules</h3>
+      <ul>
+        <li>One <code>NSPanel</code> per screen, rebuilt when displays change.</li>
+        <li>AppKit stays in <code>Window/</code> and <code>App/</code>; <code>State/</code> is pure and driven by an injected clock, so tests use a fake one.</li>
+        <li>Every system API sits behind a protocol with one real implementation and one fake.</li>
+        <li>Features are <code>BrimModule</code>s that plug in without touching the window shell.</li>
+        <li>Settings changes bump the schema (currently 7) and add a migration step with a test.</li>
+        <li>No third-party dependencies without asking first.</li>
+      </ul>
+      <p>The full guide is <a href="https://github.com/TeraSurror/brim/blob/main/AGENTS.md">AGENTS.md</a>. The <a href="https://github.com/TeraSurror/brim/blob/main/docs/TESTING.md">manual testing checklist</a> and <a href="https://github.com/TeraSurror/brim/blob/main/docs/PROGRESS.md">progress log</a> live in the repository.</p>
+    </section>
+
+    <section id="troubleshooting">
+      <h2>Troubleshooting</h2>
+      <p class="muted">When reporting a bug, include <strong>Settings → About → Copy Diagnostics</strong>.</p>
+
+      <details>
+        <summary>The panel does not appear</summary>
+        <div>
+          <ul>
+            <li>Check Brim is running: <code>pgrep -fl '/Brim.app/Contents/MacOS/Brim'</code></li>
+            <li>Move the pointer to the very top edge, inside the notch, or onto the handle on other displays.</li>
+            <li><strong>Open the panel</strong> may be set to "On click"; hovering then does nothing.</li>
+            <li><strong>Show Brim on</strong> may exclude this display.</li>
+            <li>Brim hides on purpose while an app is full screen on that display. Your shortcut still opens it.</li>
+          </ul>
+        </div>
+      </details>
+      <details>
+        <summary>Media does not appear</summary>
+        <div>
+          <ul>
+            <li>Turn it on in <strong>Settings → Media</strong>; it asks for nothing.</li>
+            <li>The ears hide 3 seconds after playback pauses; an agent that needs you takes priority.</li>
+            <li>Check the helper: <code>pgrep -fl 'mediaremote-adapter|brim-media-supervisor'</code>. If it is missing, run <code>./scripts/build-media-adapter.sh --force</code> and rebuild. A running Spotify or Music still works through Automation.</li>
+          </ul>
+        </div>
+      </details>
+      <details>
+        <summary>Agents do not appear</summary>
+        <div>
+          <ul>
+            <li>Turn on Agent Status, then press <strong>Show a Test Session</strong>. If that row appears, the problem is the integration.</li>
+            <li>Check the socket: <code>ls -l "$HOME/Library/Application Support/Brim/agent.sock"</code>, then send the <code>nc -U</code> example.</li>
+            <li>After connecting Claude Code, start a <em>new</em> session.</li>
+            <li><code>brim://</code> links need the app launched once so macOS registers it.</li>
+          </ul>
+        </div>
+      </details>
+      <details>
+        <summary>Alerts do not appear</summary>
+        <div>
+          <ul>
+            <li>Turn on <strong>Alert when an agent needs input or fails</strong>.</li>
+            <li>Alerts fire only when a session newly waits or fails, and only while no panel is open.</li>
+            <li>On the development build, look for Brim's card at the top of the screen, not in Notification Center.</li>
+          </ul>
+        </div>
+      </details>
+      <details>
+        <summary>Quick Prompt can't find <code>claude</code></summary>
+        <div><p>Install <a href="https://claude.com/claude-code">Claude Code</a> and run <code>claude</code> once in Terminal to log in. If it lives somewhere unusual, choose it in <strong>Settings → Agents → Quick Prompt → Choose…</strong>.</p></div>
+      </details>
+      <details>
+        <summary>The shortcut does nothing</summary>
+        <div><p>Settings warns when macOS refuses a combination. <kbd>⌃</kbd><kbd>⌥</kbd><kbd>Space</kbd> is macOS's "next input source" shortcut; choose another combination if you use several input sources.</p></div>
+      </details>
+      <details>
+        <summary>A rebuild dropped a permission or the login item</summary>
+        <div><p>Ad-hoc builds look new to macOS after every rebuild. Re-grant Automation in System Settings → Privacy &amp; Security and toggle Launch at login off and on.</p></div>
+      </details>
+    </section>
+
+    <section id="license">
+      <h2>License</h2>
+      <p>Brim is released under the <a href="https://github.com/TeraSurror/brim/blob/main/LICENSE">MIT License</a>, © 2026 Harsh Shelar. The bundled MediaRemote helper is BSD-3; its license ships in the app at <code>Contents/Resources/MediaAdapter/LICENSE</code>.</p>
+    </section>
+  </main>
+</div>
+
+<footer>
+  Brim · MIT License · <a href="https://github.com/TeraSurror/brim">github.com/TeraSurror/brim</a>
+</footer>
+
+<script>
+  // Copy buttons on code blocks.
+  document.querySelectorAll("pre").forEach((pre) => {
+    const button = document.createElement("button");
+    button.className = "copy";
+    button.type = "button";
+    button.textContent = "Copy";
+    button.addEventListener("click", async () => {
+      try {
+        await navigator.clipboard.writeText(pre.querySelector("code").innerText);
+        button.textContent = "Copied";
+      } catch {
+        button.textContent = "Select and copy";
+      }
+      setTimeout(() => (button.textContent = "Copy"), 1500);
+    });
+    pre.appendChild(button);
+  });
+
+  // Highlight the current section in the sidebar.
+  const links = [...document.querySelectorAll(".toc a")];
+  const observer = new IntersectionObserver((entries) => {
+    entries.forEach((entry) => {
+      if (!entry.isIntersecting) return;
+      links.forEach((link) => link.classList.toggle("active", link.getAttribute("href") === "#" + entry.target.id));
+    });
+  }, { rootMargin: "-20% 0px -70% 0px" });
+  document.querySelectorAll("main section").forEach((section) => observer.observe(section));
+
+  // Theme toggle: system by default, remembered per browser.
+  const root = document.documentElement;
+  const toggle = document.getElementById("theme-toggle");
+  const order = ["system", "light", "dark"];
+  const label = { system: "Theme: Auto", light: "Theme: Light", dark: "Theme: Dark" };
+  function apply(theme) {
+    if (theme === "system") root.removeAttribute("data-theme"); else root.setAttribute("data-theme", theme);
+    toggle.textContent = label[theme];
+  }
+  let theme = "system";
+  try { theme = localStorage.getItem("brim-theme") || "system"; } catch {}
+  apply(theme);
+  toggle.addEventListener("click", () => {
+    theme = order[(order.indexOf(theme) + 1) % order.length];
+    apply(theme);
+    try { localStorage.setItem("brim-theme", theme); } catch {}
+  });
+</script>
+</body>
+</html>
