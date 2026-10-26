@@ -53,7 +53,8 @@ Changed: `BrimModule` gained `setPanelActive` and `expandedLayoutPriority`; `Mod
 lifecycle; `AppModel` aggregates open panels across screens, persists the followed player, and reports Automation
 status; `NotchWindowController` reports active only from the first peek until the collapse animation ends;
 `Settings` is schema 2 with `preferredPlayerBundleID`; `SystemPermissionService` implements `.automation`;
-`PanelView` gives the media card more width when the clock is also enabled; Settings has a Media section; diagnostics
+`PanelView` splits the width evenly between enabled modules; the media card adapts below 320 pt by hiding the album
+and collapsing the source menu. Settings has a Media section; diagnostics
 include helper/track lines; `build.sh` bundles the helper and the Info.plist explains Apple Events.
 
 Tests: `MediaAdapterParserTests`, `MediaAdapterServiceTests` (real Perl stub process), `NowPlayingCoordinatorTests`,
@@ -270,8 +271,11 @@ agent process). Run through [`TESTING.md`](TESTING.md).
 | 2026-10-25 | Follow = Automatic, or Spotify/Music via Apple Events | The adapter exposes only the system's single Now Playing; choosing between two players needs direct access |
 | 2026-10-25 | Media module off by default; settings schema 2 | Keep M1's panel unchanged until the user opts in and sees the permission explanation |
 | 2026-10-25 | Panel active from the first peek until the collapse animation ends, plus a 1 s stop grace | Artwork must not vanish while the panel retracts; twitchy hover must not restart Perl |
-| 2026-10-25 | Give the media module expanded layout priority | The clock and media cards stay usable side by side at 600 pt |
+| 2026-10-25 | Split the panel evenly and adapt the media card below 320 pt | The clock needs its width for the 54 pt time; the media card hides the album/menu text instead of squeezing the clock |
 | 2026-10-25 | Do not close the helper's pipe while its readability handler may be reading | FileHandle raised `NSFileHandleOperationException` on close; terminating the helper produces EOF safely |
+| 2026-10-25 | Center one media group (artwork + metadata, progress, transport) in the card | The old Spacer left a large dead area and put the transport under the text column |
+| 2026-10-25 | Show “Playing in <app>” in the card and append the app to the peek subtitle | macOS only exposes the host app; the source was hidden when the half-width card collapsed the menu label |
+| 2026-10-25 | Stack the settings reorder chevrons in 20×14 frames | Side-by-side 9×5 borderless buttons were hard to hit and looked misaligned |
 
 ## Session log
 
@@ -320,6 +324,18 @@ agent process). Run through [`TESTING.md`](TESTING.md).
 - Verified the end-to-end path with a temporary stub adapter and the accessibility tree: metadata, artwork, slider,
   time labels, transport buttons, source menu, and `send` commands. No real track was played in this environment.
 - Real-player, two-player, Automation-prompt, and visual sign-off remain for a human; see `TESTING.md`.
+
+### 2026-10-25 — M2 UI polish after first use
+
+- User feedback after trying media: the expanded panel felt empty, the transport was centered on the text column
+  instead of the card, it was unclear which app was playing, and the settings reorder chevrons were tiny/misaligned.
+- Media card: artwork/metadata, progress and transport now form one vertically centered group. The progress bar spans
+  the card, the transport is centered on the card, and the metadata includes “Playing in <app>”. The compact peek
+  subtitle appends the app name too. Half-panel cards keep the album hidden and the source menu icon-only.
+- Clock card: the clock group is vertically centered, so it no longer looks half empty beside the media card.
+- Settings: the reorder chevrons are a 20×14 vertical pair instead of 9×5 side-by-side buttons.
+- Verified with offscreen renders of the full panel (both modules and media only) and the peek, plus AX frames of the
+  settings rows (each chevron 20×14, same x, 15 pt apart, centered on the row).
 
 ### 2026-10-25 — visual polish after first look
 

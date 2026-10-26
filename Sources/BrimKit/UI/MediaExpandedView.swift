@@ -32,46 +32,62 @@ struct MediaExpandedView: View {
             let position = scrubbing ?? track.position(at: context.date)
 
             GeometryReader { proxy in
-                // A wide card gets a larger sleeve and the album. Half of the panel (275 pt) still has to
-                // fit the title, controls and progress without colliding with the source menu.
+                // The card is a fixed 220 pt tall. Keep the artwork, progress and transport as one
+                // vertically centered group so the card has no dead space and the transport is centered
+                // on the card rather than on the text column beside the artwork.
                 let compact = proxy.size.width < 320
-                let artworkSize = min(116, max(72, proxy.size.width * 0.22))
+                let artworkSize: CGFloat = compact ? 84 : 96
 
-                HStack(alignment: .top, spacing: compact ? 11 : 14) {
-                    MediaArtworkView(artwork: track.artwork, size: artworkSize)
+                VStack(spacing: 8) {
+                    HStack(alignment: .top, spacing: compact ? 11 : 14) {
+                        MediaArtworkView(artwork: track.artwork, size: artworkSize)
 
-                    VStack(alignment: .leading, spacing: 3) {
-                        HStack(alignment: .firstTextBaseline, spacing: 6) {
-                            Text(track.title)
-                                .font(.system(size: compact ? 13.5 : 15, weight: .semibold, design: .rounded))
-                                .foregroundStyle(.white)
+                        VStack(alignment: .leading, spacing: 3) {
+                            HStack(alignment: .firstTextBaseline, spacing: 6) {
+                                Text(track.title)
+                                    .font(.system(size: compact ? 13.5 : 15, weight: .semibold, design: .rounded))
+                                    .foregroundStyle(.white)
+                                    .lineLimit(1)
+                                Spacer(minLength: 4)
+                                sourceMenu(track, compact: compact)
+                            }
+
+                            Text(track.artist.isEmpty ? track.source.name : track.artist)
+                                .font(.system(size: compact ? 11 : 12, weight: .medium, design: .rounded))
+                                .foregroundStyle(.white.opacity(0.6))
                                 .lineLimit(1)
-                            Spacer(minLength: 4)
-                            sourceMenu(track, compact: compact)
+
+                            if !compact && !track.album.isEmpty {
+                                Text(track.album)
+                                    .font(.system(size: 10, weight: .medium, design: .rounded))
+                                    .foregroundStyle(.white.opacity(0.32))
+                                    .lineLimit(1)
+                            }
+
+                            sourceLine(track)
                         }
-
-                        Text(track.artist.isEmpty ? track.source.name : track.artist)
-                            .font(.system(size: compact ? 11 : 12, weight: .medium, design: .rounded))
-                            .foregroundStyle(.white.opacity(0.6))
-                            .lineLimit(1)
-
-                        if !compact && !track.album.isEmpty {
-                            Text(track.album)
-                                .font(.system(size: 10, weight: .medium, design: .rounded))
-                                .foregroundStyle(.white.opacity(0.32))
-                                .lineLimit(1)
-                        }
-
-                        progress(track, position: position)
-                            .padding(.top, 8)
-                        Spacer(minLength: 8)
-                        controls(track)
+                        .frame(maxWidth: .infinity, alignment: .leading)
                     }
+
+                    progress(track, position: position)
+                    controls(track)
                 }
-                .frame(maxHeight: .infinity, alignment: .top)
+                .frame(maxHeight: .infinity, alignment: .center)
             }
         }
         .accessibilityElement(children: .contain)
+    }
+
+    private func sourceLine(_ track: NowPlaying) -> some View {
+        HStack(spacing: 4) {
+            Image(systemName: track.source.symbolName)
+                .font(.system(size: 8, weight: .semibold))
+            Text("Playing in \(track.source.name)")
+                .font(.system(size: 9, weight: .medium, design: .rounded))
+                .lineLimit(1)
+        }
+        .foregroundStyle(.white.opacity(0.38))
+        .accessibilityLabel("Playing in \(track.source.name)")
     }
 
     // MARK: - Progress

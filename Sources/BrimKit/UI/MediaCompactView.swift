@@ -32,12 +32,13 @@ struct MediaCompactView: View {
     }
 
     private func subtitle(for track: NowPlaying) -> String {
-        track.artist.isEmpty ? track.source.name : track.artist
+        track.artist.isEmpty ? track.source.name : "\(track.artist) · \(track.source.name)"
     }
 
     private func accessibilityLabel(for track: NowPlaying) -> String {
         var parts = [track.title]
         if !track.artist.isEmpty { parts.append("by \(track.artist)") }
+        parts.append("from \(track.source.name)")
         parts.append(track.isPlaying ? "playing" : "paused")
         return parts.joined(separator: ", ")
     }

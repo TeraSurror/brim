@@ -62,10 +62,11 @@ private struct ClockExpandedView: View {
                         .foregroundStyle(.white.opacity(0.55))
                 }
             }
-            Spacer(minLength: 0)
         }
         .padding(22)
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        // Center the clock group in the card; leaving all of the slack under the date made the expanded
+        // panel look half empty next to the media card.
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: Alignment(horizontal: .leading, vertical: .center))
         .background(
             RoundedRectangle(cornerRadius: 22, style: .continuous)
                 .fill(Color.white.opacity(0.045))

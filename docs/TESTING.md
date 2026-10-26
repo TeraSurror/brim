@@ -24,7 +24,7 @@ for what was already verified.
 | F3 | Settings → General → uncheck "Show a handle on displays without a notch". | The handle disappears immediately; the notched display is unaffected. Re-check it: the handle returns. |
 | F4 | Expand the panel. | The clock card is visible in the expanded layout; the peek shows the compact clock. |
 | F4 | Settings → Modules: turn the clock off, then on. | The panel updates immediately. With nothing enabled, the expanded panel says "No modules enabled" and links to settings. |
-| F4 | Add a second module (M2 media) and use the up/down arrows. | The panel order follows the list and survives relaunch. (With only the clock in M1, both arrows are disabled; ordering is covered by unit tests.) |
+| F4 | Add a second module (M2 media) and use the up/down arrows. | The panel order follows the list and survives relaunch. The up/down chevrons form a vertically aligned pair with a full click target. (With only the clock in M1, both arrows are disabled; ordering is covered by unit tests.) |
 | F4 | Turn on a module that needs a permission (M2). | No prompt at launch. Turning it on shows Brim's explanation sheet first, then macOS asks. Declining still enables it in a limited form. |
 | F5 | Right-click the expanded panel. | A menu with Settings… and Quit Brim appears. Both work. |
 | F5 | Settings → General: change both sliders and the handle toggle; quit and relaunch. | Values are restored from `~/Library/Application Support/Brim/settings.json`. |
@@ -44,7 +44,8 @@ Automation (only for Spotify or Music that is running). Declining must still lea
 | --- | --- | --- |
 | F6 | Play a track in Spotify or Music, then hover the notch. | The peek shows small artwork on the left, title/artist beside it and the playing indicator on the right. |
 | F6 | Play a YouTube video in Safari, then hover the notch. | The same compact view appears with Safari as the source (artwork when macOS provides it). |
-| F6 | With the panel expanded, look at the media card. | Artwork, title, artist, album, progress bar, elapsed/remaining time, previous / play-pause / next, and a source menu. |
+| F6 | With the panel expanded, look at the media card. | Artwork, title, artist, album, progress bar, elapsed/remaining time, previous / play-pause / next, and a source menu. The transport is centered on the card and the progress bar spans the card; there is no large dead area. |
+| F6 | Look at the bottom of the metadata in the expanded card, and at the peek subtitle. | The expanded card says “Playing in Spotify/Safari/…” and the peek subtitle appends the app name, so it is clear which app macOS is reporting. The top-right source menu still lets you change the followed player. |
 | F6 | Press play/pause, next and previous in the expanded panel. | The player reacts immediately and the card updates. Pause shows a play glyph; the compact indicator stops animating. |
 | F6 | Drag the progress bar, then release. | The player seeks to that position. While dragging, the time labels follow the pointer. |
 | F6 | Let a track play for a few seconds without touching anything. | The progress bar and elapsed time advance every second while the panel is open; they stop when it closes. |
@@ -118,8 +119,9 @@ Automation (only for Spotify or Music that is running). Declining must still lea
   Music before using Grant Automation…; the module still works through MediaRemote without it.
 - With only Music installed (the development machine), the two-player acceptance check cannot be exercised against
   Spotify. The coordinator and menu logic are covered by unit tests with fakes.
-- The expanded panel gives the media module layout priority so it gets more than half the width when the clock is also
-  enabled. A card narrower than about 300 pt truncates the title; both modules still remain usable.
+- The expanded panel splits the width evenly between enabled modules. The media card adapts when it gets less than
+  320 pt (hides the album, collapses the source menu to an icon), but a very long title still truncates. Both modules
+  remain usable.
 - The panel stays near-black in light and dark mode on purpose; only the settings window follows the system appearance.
 - The adapter build needs CMake and network access on the first run. `BRIM_SKIP_MEDIA_ADAPTER=1 ./build.sh` produces an
   app without it; the rest of Brim works.

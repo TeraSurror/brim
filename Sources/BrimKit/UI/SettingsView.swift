@@ -284,24 +284,21 @@ private struct ModuleRow: View {
             Spacer(minLength: 12)
 
             if isEnabled {
-                HStack(spacing: 2) {
-                    Button(action: onMoveUp) {
-                        Image(systemName: "chevron.up")
-                    }
-                    .buttonStyle(.borderless)
-                    .disabled(!canMoveUp)
-                    .help("Move up")
-                    .accessibilityLabel("Move \(module.title) up")
-
-                    Button(action: onMoveDown) {
-                        Image(systemName: "chevron.down")
-                    }
-                    .buttonStyle(.borderless)
-                    .disabled(!canMoveDown)
-                    .help("Move down")
-                    .accessibilityLabel("Move \(module.title) down")
+                VStack(spacing: 1) {
+                    reorderButton(
+                        "chevron.up",
+                        label: "Move \(module.title) up",
+                        enabled: canMoveUp,
+                        action: onMoveUp
+                    )
+                    reorderButton(
+                        "chevron.down",
+                        label: "Move \(module.title) down",
+                        enabled: canMoveDown,
+                        action: onMoveDown
+                    )
                 }
-                .font(.system(size: 10, weight: .semibold))
+                .frame(width: 20)
             }
 
             // No `.labelsHidden()`: on macOS that strips the checkbox's accessibility action.
@@ -309,6 +306,26 @@ private struct ModuleRow: View {
                 .accessibilityLabel("Enable \(module.title)")
         }
         .padding(.vertical, 2)
+    }
+
+    /// A 20×14 hit target per chevron, stacked so the pair reads as one reorder control. The old
+    /// borderless buttons were only 9×5 and sat unevenly next to the toggle.
+    private func reorderButton(
+        _ symbol: String,
+        label: String,
+        enabled: Bool,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            Image(systemName: symbol)
+                .font(.system(size: 9, weight: .semibold))
+                .frame(width: 20, height: 14)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .disabled(!enabled)
+        .help(label)
+        .accessibilityLabel(label)
     }
 }
 
