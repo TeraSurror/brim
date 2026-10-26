@@ -15,6 +15,10 @@ final class PanelStateModel: ObservableObject {
     @Published var showsLiveContent: Bool
     /// Set while a content drag holds the panel open: the panel shows drop zones instead of the cards.
     @Published var dropKinds: Set<DropKind>?
+    /// True while the window holds keyboard focus (opened by the shortcut, or the prompt field was clicked).
+    @Published var hasKeyboardFocus = false
+    /// Set by the window controller; asks for keyboard focus the way the shortcut would.
+    var requestKeyboardFocus: (() -> Void)?
 
     init(
         state: PanelState = .collapsed,

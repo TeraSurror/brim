@@ -151,17 +151,32 @@ struct PanelView: View {
             }
             .padding(.horizontal, 2)
 
-            if model.activeModules.isEmpty {
-                emptyModules
-            } else {
-                HStack(alignment: .top, spacing: PanelMetrics.moduleSpacing) {
-                    ForEach(model.activeModules, id: \.id) { module in
-                        module.expandedView()
-                            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+            ForEach(model.barModules, id: \.id) { module in
+                module.expandedView()
+                    .frame(
+                        maxWidth: .infinity,
+                        maxHeight: model.fullPanelModuleID == module.id ? .infinity : nil,
+                        alignment: .top
+                    )
+            }
+
+            if model.fullPanelModuleID == nil {
+                if model.activeModules.isEmpty {
+                    emptyModules
+                } else if !model.cardModules.isEmpty {
+                    HStack(alignment: .top, spacing: PanelMetrics.moduleSpacing) {
+                        ForEach(model.cardModules, id: \.id) { module in
+                            module.expandedView()
+                                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+                        }
                     }
                 }
             }
         }
+        .environment(\.panelFocus, PanelFocus(
+            isFocused: panel.hasKeyboardFocus,
+            request: { [weak panel] in panel?.requestKeyboardFocus?() }
+        ))
         .padding(.horizontal, PanelMetrics.panelHorizontalPadding)
         .padding(.top, topPadding)
         .padding(.bottom, 18)

@@ -17,6 +17,7 @@ public enum SettingsMigrator {
                 object["displayMode"] = DisplayMode.notchedOnly.rawValue
             }
         },
+        6: { _ in }, // schema 7 adds Quick Prompt's CLI override and recent folders; both start empty
     ]
 
     public static func migrate(_ data: Data) throws -> Settings {

@@ -92,6 +92,46 @@ final class FakeHotKeys: HotKeyRegistering {
     func press(_ action: HotKeyAction) { onPress?(action) }
 }
 
+@MainActor
+final class FakePromptRunner: PromptRunning {
+    private(set) var requests: [PromptRequest] = []
+    private(set) var executables: [URL] = []
+    private(set) var cancelCount = 0
+    private var onEvent: (@MainActor (PromptEvent) -> Void)?
+
+    func run(
+        _ request: PromptRequest,
+        executable: URL,
+        onEvent: @escaping @MainActor (PromptEvent) -> Void
+    ) -> TaskHandle {
+        requests.append(request)
+        executables.append(executable)
+        self.onEvent = onEvent
+        return TaskHandle { [weak self] in
+            self?.cancelCount += 1
+            self?.emit(.finished(PromptResult(isError: false, message: "Stopped.")))
+        }
+    }
+
+    func emit(_ event: PromptEvent) { onEvent?(event) }
+
+    func finish(_ answer: String = "", session: String = "session-1", cost: Double? = 0.01) {
+        emit(.finished(PromptResult(isError: false, message: answer, sessionID: session, costUSD: cost)))
+    }
+}
+
+@MainActor
+final class FakeCLILocator: ClaudeCLILocating {
+    var found: URL? = URL(fileURLWithPath: "/usr/local/bin/claude")
+    private(set) var overrides: [String?] = []
+
+    func locate(override: String?) -> URL? {
+        overrides.append(override)
+        if let override { return URL(fileURLWithPath: override) }
+        return found
+    }
+}
+
 struct FakeLoginError: Error {}
 
 final class FakeLoginItems: LoginItemControlling {

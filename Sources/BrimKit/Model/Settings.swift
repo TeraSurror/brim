@@ -2,7 +2,7 @@ import Foundation
 
 /// Persisted user settings. Custom decoding keeps old files loadable after a schema bump.
 public struct Settings: Codable, Equatable, Sendable {
-    public static let currentSchemaVersion = 6
+    public static let currentSchemaVersion = 7
     public static let hoverDelayRange: ClosedRange<Double> = 0.05...1.5
     public static let collapseDelayRange: ClosedRange<Double> = 0.1...2.0
     public static let agentRetentionRange: ClosedRange<Double> = 1...120
@@ -27,6 +27,10 @@ public struct Settings: Codable, Equatable, Sendable {
     /// The global shortcut that opens the panel with keyboard focus. None by default, so Brim never takes a
     /// combination another app relies on.
     public var openPanelShortcut: HotKey?
+    /// Quick Prompt: a `claude` the user chose, or nil to look in the usual places.
+    public var quickPromptCLIPath: String?
+    /// Quick Prompt's recent folders, most recent first.
+    public var quickPromptRecentFolders: [String] = []
     /// Bundle identifier of the player to follow, or nil for whatever macOS reports. Choosing Spotify or
     /// Music enables the optional Apple Events path; the adapter alone needs no setting.
     public var preferredPlayerBundleID: String?
@@ -56,6 +60,9 @@ public struct Settings: Codable, Equatable, Sendable {
         displayMode = (try? container.decodeIfPresent(DisplayMode.self, forKey: .displayMode)) ?? defaults.displayMode
         let shortcut = (try? container.decodeIfPresent(HotKey.self, forKey: .openPanelShortcut)) ?? nil
         openPanelShortcut = shortcut?.isValid == true ? shortcut : nil
+        quickPromptCLIPath = try container.decodeIfPresent(String.self, forKey: .quickPromptCLIPath)
+        quickPromptRecentFolders = try container.decodeIfPresent([String].self, forKey: .quickPromptRecentFolders)
+            ?? defaults.quickPromptRecentFolders
         preferredPlayerBundleID = try container.decodeIfPresent(String.self, forKey: .preferredPlayerBundleID)
         let retention = try container.decodeIfPresent(Double.self, forKey: .agentFinishedRetentionMinutes)
             ?? defaults.agentFinishedRetentionMinutes

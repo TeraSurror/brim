@@ -30,6 +30,10 @@ public final class AppModel: ObservableObject {
             if settings.openPanelShortcut != oldValue.openPanelShortcut {
                 syncHotKeys()
             }
+            if settings.quickPromptCLIPath != oldValue.quickPromptCLIPath
+                || settings.quickPromptRecentFolders != oldValue.quickPromptRecentFolders {
+                syncQuickPrompt()
+            }
         }
     }
 
@@ -41,6 +45,8 @@ public final class AppModel: ObservableObject {
     @Published public var agentNotificationError: String?
     /// The module that owns the live notch right now, or nil when the collapsed notch should be bare.
     @Published public private(set) var liveModuleID: String?
+    /// A bar module that has taken over the open panel (an answer is showing), or nil for the cards.
+    @Published public private(set) var fullPanelModuleID: String?
     @Published public var settingsTab: SettingsTab = .general
     /// Shown at the top of Settings on the very first launch.
     @Published public var showsWelcome: Bool
@@ -50,6 +56,8 @@ public final class AppModel: ObservableObject {
     @Published public private(set) var shortcutError: String?
     /// While Settings records a shortcut the old one is paused; otherwise pressing it again would trigger it
     /// instead of reaching the recorder.
+    /// The `claude` Quick Prompt would run, for Settings. Nil when none was found.
+    @Published public private(set) var quickPromptCLIPath: String?
     @Published public var isRecordingShortcut = false {
         didSet {
             guard isRecordingShortcut != oldValue else { return }
@@ -66,6 +74,7 @@ public final class AppModel: ObservableObject {
     /// The latest activity each module published, keyed by module ID.
     private var liveActivities: [String: LiveActivity] = [:]
     private var liveSubscriptions: [AnyCancellable] = []
+    private var fillsPanel: [String: Bool] = [:]
 
     /// Set by the composition root; the UI never calls AppKit or window APIs itself.
     public var openSettings: () -> Void = {}
@@ -106,6 +115,7 @@ public final class AppModel: ObservableObject {
         syncAgentRetention()
         syncAgentNotifications()
         syncLiveActivity()
+        syncQuickPrompt()
         hotKeys?.onPress = { [weak self] action in self?.onShortcut(action) }
         syncHotKeys()
         refreshAutomationStatus()
@@ -121,6 +131,12 @@ public final class AppModel: ObservableObject {
             return module.liveActivityPublisher.sink { [weak self] activity in
                 self?.liveActivities[id] = activity
                 self?.recomputeLiveModule()
+            }
+        } + registry.allModules.map { module in
+            let id = module.id
+            return module.fillsPanelPublisher.sink { [weak self] fills in
+                self?.fillsPanel[id] = fills
+                self?.recomputeFullPanel()
             }
         }
     }
@@ -138,6 +154,8 @@ public final class AppModel: ObservableObject {
         openSettings()
     }
     public var disabledModules: [any BrimModule] { registry.disabledModules }
+    public var cardModules: [any BrimModule] { activeModules.filter { $0.placement == .card } }
+    public var barModules: [any BrimModule] { activeModules.filter { $0.placement == .bar } }
 
     /// Installed players for the Follow picker. Empty when neither Spotify nor Music is installed.
     public var mediaSources: [NowPlayingSource] {
@@ -168,6 +186,12 @@ public final class AppModel: ObservableObject {
         registry.apply(enabledIDs: settings.enabledModules)
         activeModules = registry.enabledModules
         recomputeLiveModule()
+        recomputeFullPanel()
+    }
+
+    private func recomputeFullPanel() {
+        let next = activeModules.first { $0.placement == .bar && fillsPanel[$0.id] == true }?.id
+        if next != fullPanelModuleID { fullPanelModuleID = next }
     }
 
     private func syncLiveActivity() {
@@ -188,7 +212,7 @@ public final class AppModel: ObservableObject {
     /// the explanation sheet and `enableModuleAfterPermissionExplanation`; this is the fallback.
     public func setModuleEnabled(_ id: String, _ enabled: Bool) {
         guard let module = registry.module(id: id) else { return }
-        if enabled, !module.isEnabled, !module.requiredPermissions.isEmpty {
+        if enabled, !module.isEnabled, module.explainsBeforeEnabling {
             Task { await enableModuleAfterPermissionExplanation(id) }
             return
         }
@@ -257,6 +281,46 @@ public final class AppModel: ObservableObject {
         if sourceID != nil, automationStatus != .granted {
             showSettings(.media)
         }
+    }
+
+    // MARK: - Quick Prompt
+
+    public var quickPromptModule: (any QuickPromptControlling)? {
+        registry.allModules.compactMap { $0 as? QuickPromptControlling }.first
+    }
+
+    private func syncQuickPrompt() {
+        guard let module = quickPromptModule else { return }
+        module.applyCLIPath(settings.quickPromptCLIPath)
+        module.applyRecentFolders(settings.quickPromptRecentFolders)
+        quickPromptCLIPath = module.resolvedCLIPath
+    }
+
+    /// The finder runs a login-shell lookup in the background, so Settings asks again when it appears.
+    public func refreshQuickPromptCLI() {
+        quickPromptCLIPath = quickPromptModule?.resolvedCLIPath
+    }
+
+    public func setQuickPromptCLIPath(_ path: String?) {
+        settings.quickPromptCLIPath = path?.isEmpty == true ? nil : path
+    }
+
+    /// Only from the Settings button: the user points Brim at the `claude` it should run.
+    public func chooseQuickPromptCLI() {
+        let panel = NSOpenPanel()
+        panel.canChooseFiles = true
+        panel.canChooseDirectories = false
+        panel.treatsFilePackagesAsDirectories = true
+        panel.message = "Choose the claude command"
+        panel.prompt = "Use"
+        if panel.runModal() == .OK, let url = panel.url {
+            setQuickPromptCLIPath(url.path)
+        }
+    }
+
+    public func setQuickPromptRecentFolders(_ paths: [String]) {
+        guard settings.quickPromptRecentFolders != paths else { return }
+        settings.quickPromptRecentFolders = paths
     }
 
     // MARK: - Shortcuts

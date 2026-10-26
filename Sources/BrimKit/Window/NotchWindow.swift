@@ -37,13 +37,15 @@ final class NotchWindow: NSPanel {
         onCancel?()
     }
 
-    override func keyDown(with event: NSEvent) {
-        // Esc reaches the window directly when no control has focus.
-        if event.keyCode == 53 {
+    /// Esc is taken here, before a focused text field can treat it as "complete", so it always means
+    /// "back out": the panel decides whether that leaves a conversation or closes it.
+    override func sendEvent(_ event: NSEvent) {
+        if event.type == .keyDown, event.keyCode == 53,
+           event.modifierFlags.isDisjoint(with: [.command, .option, .control, .shift]) {
             onCancel?()
-        } else {
-            super.keyDown(with: event)
+            return
         }
+        super.sendEvent(event)
     }
 
     override func resignKey() {

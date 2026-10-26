@@ -138,6 +138,28 @@ final class SettingsTests: XCTestCase {
         XCTAssertEqual(settings.hoverDelay, 0.3)
     }
 
+    func testSchemaSixFileGainsEmptyQuickPromptSettings() throws {
+        let settings = try SettingsMigrator.migrate(
+            Data(#"{"schemaVersion":6,"displayMode":"mainOnly","enabledModules":["media"]}"#.utf8))
+        XCTAssertEqual(settings.schemaVersion, Settings.currentSchemaVersion)
+        XCTAssertEqual(settings.displayMode, .mainOnly)
+        XCTAssertNil(settings.quickPromptCLIPath)
+        XCTAssertEqual(settings.quickPromptRecentFolders, [])
+    }
+
+    func testQuickPromptSettingsRoundTrip() throws {
+        var settings = Settings()
+        settings.quickPromptCLIPath = "/opt/claude"
+        settings.quickPromptRecentFolders = ["/a", "/b"]
+        let decoded = try SettingsMigrator.migrate(JSONEncoder().encode(settings))
+        XCTAssertEqual(decoded.quickPromptCLIPath, "/opt/claude")
+        XCTAssertEqual(decoded.quickPromptRecentFolders, ["/a", "/b"])
+    }
+
+    func testQuickPromptIsOffForNewInstalls() {
+        XCTAssertFalse(Settings().enabledModules.contains(QuickPromptModule.moduleID))
+    }
+
     func testUnknownDisplayModeFallsBackToAllDisplays() throws {
         let settings = try SettingsMigrator.migrate(
             Data(#"{"schemaVersion":6,"displayMode":"ceilingOnly","hoverDelay":0.3}"#.utf8))

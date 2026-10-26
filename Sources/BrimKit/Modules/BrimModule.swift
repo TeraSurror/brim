@@ -1,6 +1,14 @@
 import Combine
 import SwiftUI
 
+/// Where a module sits in the open panel.
+public enum ModulePlacement: Sendable {
+    /// Side by side with the other cards, each with its own width share.
+    case card
+    /// A strip across the top of the panel, above the cards (Quick Prompt).
+    case bar
+}
+
 /// The extension point for everything that lives in the panel. Modules own their content and their
 /// permission request; the window shell only lays them out.
 @MainActor
@@ -13,6 +21,13 @@ public protocol BrimModule: AnyObject, Identifiable {
     /// and only after the user has seen `permissionExplanation`.
     var requiredPermissions: [PermissionKind] { get }
     var permissionExplanation: String { get }
+    /// Shows `permissionExplanation` before enabling even when no permission is needed, for modules whose
+    /// effects deserve a word first (Quick Prompt runs the user's `claude` command).
+    var explainsBeforeEnabling: Bool { get }
+
+    var placement: ModulePlacement { get }
+    /// True while the module wants the whole open panel, such as an answer being read; the cards step aside.
+    var fillsPanelPublisher: AnyPublisher<Bool, Never> { get }
 
     /// Whether the module is currently active. The registry drives this from settings.
     var isEnabled: Bool { get }
@@ -37,11 +52,19 @@ public protocol BrimModule: AnyObject, Identifiable {
     var dropTitle: String { get }
     func handleDrop(_ payload: DropPayload)
 
+    /// Esc in an open panel. Return true when the module used it (Quick Prompt leaves its conversation);
+    /// otherwise the panel closes.
+    func handleEscape() -> Bool
+
     func expandedView() -> AnyView
 }
 
 public extension BrimModule {
     func setPanelActive(_ active: Bool) {}
+
+    var explainsBeforeEnabling: Bool { !requiredPermissions.isEmpty }
+    var placement: ModulePlacement { .card }
+    var fillsPanelPublisher: AnyPublisher<Bool, Never> { Just(false).eraseToAnyPublisher() }
 
     var liveActivity: LiveActivity? { nil }
     var liveActivityPublisher: AnyPublisher<LiveActivity?, Never> { Just(nil).eraseToAnyPublisher() }
@@ -51,4 +74,5 @@ public extension BrimModule {
     var acceptedDrops: Set<DropKind> { [] }
     var dropTitle: String { title }
     func handleDrop(_ payload: DropPayload) {}
+    func handleEscape() -> Bool { false }
 }

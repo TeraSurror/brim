@@ -6,9 +6,10 @@ before ending a session.
 **Last updated:** 2026-10-26
 **Current milestone:** M1–M3 F8 and the UX revision F9–F14 are complete and signed off by the user (2026-10-26). F14
 (hide over full-screen apps, menu-bar-height pill) came out of that sign-off.
-**Next action:** the user designed F15–F20 on 2026-10-26 (spec sections "Panel input" and "Milestone 3,
-continued"). Confirm the open points listed in the session log, then propose the file list and protocols for Panel
-input (F15–F18) and wait for approval before writing code. Stretch goals are deliberately not designed.
+**Next action:** F15–F18 are committed and verified by the agent (F18 end to end waits for F20). F19 (Quick
+Prompt) is committed with 344 tests passing, but typing into the prompt field has not been confirmed in the real app:
+synthetic key events did not reach the field (see the session log). Have the user type a prompt (⌃⌥⌘B, type, Return,
+Esc twice), fix what that shows, then build F20. Stretch goals are deliberately not designed.
 
 ## How to resume
 
@@ -710,4 +711,23 @@ shorter than its menu bar. The list is kept as a record of what was checked.
   onto Ask Claude take focus (exceptions to keyboard-only focus); the shortcut shows the panel over a full-screen app;
   "notched only" falls back to the main display with the lid closed; F18 has no visible drop zone until F20; the
   attachment limits (10 items, 20 MB each).
+
+### 2026-10-26 — Panel input (F15–F18) and Quick Prompt (F19)
+
+- The user approved the defaults from the design round by asking to start implementation.
+- F15 display mode (schema 6), F16 global shortcut and keyboard focus, F17 scroll/swipe gestures and F18 drag
+  detection with module drop zones: one commit each, verified as recorded in `TESTING.md`.
+- F19: `QuickPromptModule` (a bar above the cards, takes over the panel while a conversation shows),
+  `ClaudeCLIRunner` (`claude -p` with `--tools Read,Grep,Glob --strict-mcp-config`, prompt on stdin,
+  `BRIM_QUICK_PROMPT=1`), `ClaudeCLILocator`, `ClaudeStreamParser` (from recorded 2.1.310 output), a small Markdown
+  block renderer, settings schema 7 and hook version 3 (skips quick prompt runs). The window now catches Esc before a
+  focused text field, and modules can use it first (`handleEscape`).
+- Verified: one real `claude -p` run in the stream-json mode; the panel opens at 630×366 with the bar and focus on the
+  field (after deferring the focus request until the window is key).
+- Not verified: typing into the field. Synthetic CGEvent typing left the field empty; two unexplained Brim-owned
+  windows appeared (312×237 at layer 101 under the field, 500×500 at layer 0), and one attempt opened Choose Folder…
+  and blocked the main thread until Brim was quit. Screenshots through `screencapture` triggered a macOS "tmux is
+  requesting to bypass the private window picker" prompt, so the agent stopped GUI automation.
+- The user's settings were left in a test configuration (Quick Prompt on, ⌃⌥⌘B); the original is backed up in the
+  session scratchpad.
 

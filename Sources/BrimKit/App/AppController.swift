@@ -12,6 +12,7 @@ public final class AppController {
     private let coordinator: NowPlayingCoordinator
     private let agent: AgentModule
     private let alertPresenter: AgentAlertPresenter
+    private let quickPrompt: QuickPromptModule
     private let windows = WindowPresenter()
     private var windowManager: NotchWindowManager?
     private var cancellables = Set<AnyCancellable>()
@@ -29,10 +30,13 @@ public final class AppController {
         let screens = NSScreenProvider()
         let alertPresenter = AgentAlertPresenter(screens: screens, scheduler: scheduler)
         let agent = AgentModule(alertPresenter: alertPresenter)
+        let quickPrompt = QuickPromptModule()
+        quickPrompt.defaultFolderPath = { [weak agent] in agent?.mostRecentProjectPath }
+        quickPrompt.chooseFolderPanel = { Self.chooseFolder() }
         let model = AppModel(
             store: JSONSettingsStore(),
             loginItems: SMLoginItemService(),
-            registry: ModuleRegistry(modules: [media, ClockModule(), agent]),
+            registry: ModuleRegistry(modules: [media, ClockModule(), agent, quickPrompt]),
             permissions: SystemPermissionService(),
             claudeHook: ClaudeHookInstaller(),
             hotKeys: CarbonHotKeyService()
@@ -41,11 +45,15 @@ public final class AppController {
         media.onPreferredPlayerChange = { [weak model] sourceID in
             model?.choosePlayerFromPanel(sourceID)
         }
+        quickPrompt.onRecentFoldersChange = { [weak model] paths in
+            model?.setQuickPromptRecentFolders(paths)
+        }
 
         self.model = model
         self.coordinator = coordinator
         self.agent = agent
         self.alertPresenter = alertPresenter
+        self.quickPrompt = quickPrompt
         self.screens = screens
         self.scheduler = scheduler
         self.monitor = NSEventPointerMonitor()
@@ -131,8 +139,22 @@ public final class AppController {
         agent.handle(command)
     }
 
-    /// Cleans up the agent socket on quit; the listener is otherwise stopped when the module is disabled.
+    /// Cleans up the agent socket and any running quick prompt on quit.
     public func stop() {
         agent.setEnabled(false)
+        quickPrompt.startNewConversation()
+    }
+
+    /// A folder picker for Quick Prompt. Brim comes forward for it, since a sheet-less panel needs an
+    /// active app to take keyboard input.
+    private static func chooseFolder() -> URL? {
+        let panel = NSOpenPanel()
+        panel.canChooseDirectories = true
+        panel.canChooseFiles = false
+        panel.allowsMultipleSelection = false
+        panel.prompt = "Use Folder"
+        panel.message = "Claude can read files in this folder (read-only)."
+        NSApp.activate(ignoringOtherApps: true)
+        return panel.runModal() == .OK ? panel.url : nil
     }
 }

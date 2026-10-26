@@ -17,9 +17,11 @@ struct PermissionExplanationView: View {
                     .accessibilityHidden(true)
 
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("Allow \(module.title)?")
+                    Text(module.requiredPermissions.isEmpty ? "Turn on \(module.title)?" : "Allow \(module.title)?")
                         .font(.headline)
-                    Text("Brim asks only because you turned this module on.")
+                    Text(module.requiredPermissions.isEmpty
+                        ? "Here is what it does before you turn it on."
+                        : "Brim asks only because you turned this module on.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -33,10 +35,12 @@ struct PermissionExplanationView: View {
                     .foregroundStyle(.secondary)
             }
 
-            Text("If you decline, the module stays enabled in a limited form. You can change permissions later in System Settings → Privacy & Security.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
+            if !module.requiredPermissions.isEmpty {
+                Text("If you decline, the module stays enabled in a limited form. You can change permissions later in System Settings → Privacy & Security.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
 
             HStack {
                 Spacer()

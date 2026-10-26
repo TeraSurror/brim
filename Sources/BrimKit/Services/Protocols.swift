@@ -124,3 +124,20 @@ public protocol HotKeyRegistering: AnyObject {
     func register(_ hotKey: HotKey, for action: HotKeyAction) -> Bool
     func unregister(_ action: HotKeyAction)
 }
+
+/// Finds the user's `claude` command. Brim only ever runs a binary it found here or the user chose.
+@MainActor
+public protocol ClaudeCLILocating: AnyObject {
+    func locate(override: String?) -> URL?
+}
+
+/// Runs one quick prompt through Claude Code with read-only tools. Events arrive on the main actor; the
+/// handle stops the run.
+@MainActor
+public protocol PromptRunning: AnyObject {
+    func run(
+        _ request: PromptRequest,
+        executable: URL,
+        onEvent: @escaping @MainActor (PromptEvent) -> Void
+    ) -> TaskHandle
+}

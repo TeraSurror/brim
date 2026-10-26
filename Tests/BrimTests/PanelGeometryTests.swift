@@ -65,6 +65,13 @@ final class PanelGeometryTests: XCTestCase {
         XCTAssertEqual(live.minY, plain.frame.minY)
     }
 
+    func testABarModuleAddsHeightButNotWidth() {
+        let plainMetrics = PanelMetrics(moduleCount: 2)
+        let withBar = PanelMetrics(moduleCount: 2, barCount: 1)
+        XCTAssertEqual(withBar.expandedWidth, plainMetrics.expandedWidth)
+        XCTAssertEqual(withBar.expandedHeight, plainMetrics.expandedHeight + PanelMetrics.barHeight)
+    }
+
     func testTheTopStripIsTheNotchHeightBandOfTheOpenPanel() {
         let geometry = PanelGeometry(screen: notched)
         let expanded = geometry.frame(for: .expanded)

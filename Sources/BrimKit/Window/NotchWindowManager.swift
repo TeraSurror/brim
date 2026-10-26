@@ -20,7 +20,7 @@ final class NotchWindowManager {
     private var screenObserver: NSObjectProtocol?
     private var rebuildTask: TaskHandle?
     private var displayMode: DisplayMode
-    private var moduleCount: Int
+    private var moduleCounts: [Int]
     private var isLive: Bool
     private var screenSignature = ""
     private var cancellables = Set<AnyCancellable>()
@@ -39,8 +39,9 @@ final class NotchWindowManager {
         self.scheduler = scheduler
         self.monitor = monitor
         self.fullScreen = fullScreen
-        self.moduleCount = model.activeModules.count
-        self.metrics = PanelMetrics(moduleCount: model.activeModules.count)
+        let counts = Self.moduleCounts(model.activeModules)
+        self.moduleCounts = counts
+        self.metrics = PanelMetrics(moduleCount: counts[0], barCount: counts[1])
         self.isLive = model.liveModuleID != nil
         self.displayMode = model.settings.displayMode
 
@@ -69,9 +70,9 @@ final class NotchWindowManager {
             .sink { [weak self] live in self?.setLive(live) }
             .store(in: &cancellables)
         model.$activeModules
-            .map(\.count)
+            .map(Self.moduleCounts)
             .removeDuplicates()
-            .sink { [weak self] count in self?.setModuleCount(count) }
+            .sink { [weak self] counts in self?.setModuleCounts(counts) }
             .store(in: &cancellables)
 
         rebuild()
@@ -118,11 +119,16 @@ final class NotchWindowManager {
         }
     }
 
-    private func setModuleCount(_ count: Int) {
-        guard count != moduleCount else { return }
-        moduleCount = count
-        metrics = PanelMetrics(moduleCount: count)
+    /// Cards set the panel's width and bars its height, so either changing needs new windows.
+    private func setModuleCounts(_ counts: [Int]) {
+        guard counts != moduleCounts else { return }
+        moduleCounts = counts
+        metrics = PanelMetrics(moduleCount: counts[0], barCount: counts[1])
         rebuild(force: true)
+    }
+
+    private static func moduleCounts(_ modules: [any BrimModule]) -> [Int] {
+        [modules.filter { $0.placement == .card }.count, modules.filter { $0.placement == .bar }.count]
     }
 
     func stop() {

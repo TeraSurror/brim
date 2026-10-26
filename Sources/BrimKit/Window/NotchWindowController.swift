@@ -80,7 +80,12 @@ final class NotchWindowController {
         machine.onStateChange = { [weak self] state in
             self?.transition(to: state)
         }
-        window.onCancel = { [weak self] in self?.closeFromKeyboard() }
+        window.onCancel = { [weak self, weak model] in
+            guard let self else { return }
+            if model?.activeModules.contains(where: { $0.handleEscape() }) == true { return }
+            self.closeFromKeyboard()
+        }
+        panelState.requestKeyboardFocus = { [weak self] in self?.openFromKeyboard() }
         window.onResignKey = { [weak self] in
             // Clicking another app or the desktop takes focus away; that closes a keyboard-opened panel.
             guard let self, self.isKeyboardOpen else { return }
@@ -164,6 +169,7 @@ final class NotchWindowController {
         isKeyboardOpen = true
         machine.isEnabled = true
         window.acceptsKeyboardFocus = true
+        panelState.hasKeyboardFocus = true
         machine.expandFromKeyboard()
         // Non-activating: the window takes key focus while the front app stays active.
         window.makeKeyAndOrderFront(nil)
@@ -179,6 +185,7 @@ final class NotchWindowController {
         guard isKeyboardOpen else { return }
         isKeyboardOpen = false
         window.acceptsKeyboardFocus = false
+        panelState.hasKeyboardFocus = false
         if window.isKeyWindow {
             window.orderOut(nil)
             if !isHidden { window.orderFrontRegardless() }

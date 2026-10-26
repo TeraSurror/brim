@@ -60,12 +60,15 @@ public enum ClaudeHookConfig {
 
     /// Reads Claude Code's hook JSON from stdin and writes one event line to Brim's socket. It never fails
     /// the hook: if Brim is not running the event is dropped. `__CFBundleIdentifier` is set by macOS for
-    /// processes started from an app, so it names the terminal or editor running Claude Code.
+    /// processes started from an app, so it names the terminal or editor running Claude Code. Version 3 skips
+    /// Brim's own Quick Prompt runs.
     public static let script = #"""
         #!/bin/sh
-        # brim-hook-version: 2
+        # brim-hook-version: 3
         # Installed by Brim (Settings → Agents). Reports Claude Code activity to Brim's local socket.
         # usage: claude-hook.sh <working|waiting|done|error> [detail]  (hook JSON arrives on stdin)
+        # Brim's own Quick Prompt runs set BRIM_QUICK_PROMPT; they are not agent sessions to show.
+        [ -n "$BRIM_QUICK_PROMPT" ] && exit 0
         /usr/bin/python3 -c '
         import json, os, socket, sys, time
         status = sys.argv[1] if len(sys.argv) > 1 else "working"

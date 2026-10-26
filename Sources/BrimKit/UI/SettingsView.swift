@@ -413,6 +413,8 @@ private struct AgentsSettingsTab: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
+
+            QuickPromptSettingsSection()
         }
         .formStyle(.grouped)
         .onAppear {
@@ -474,6 +476,59 @@ private struct AgentsSettingsTab: View {
         case nil:
             ("Unavailable", "circle.dashed", .secondary)
         }
+    }
+}
+
+private struct QuickPromptSettingsSection: View {
+    @EnvironmentObject var model: AppModel
+
+    var body: some View {
+        Section {
+            if model.isModuleEnabled(QuickPromptModule.moduleID) {
+                LabeledContent("Claude Code") {
+                    HStack(spacing: 8) {
+                        if let path = model.quickPromptCLIPath {
+                            Label(path, systemImage: "checkmark.circle.fill")
+                                .labelStyle(.titleAndIcon)
+                                .font(.system(size: 11, design: .monospaced))
+                                .foregroundStyle(.secondary)
+                                .lineLimit(1)
+                                .truncationMode(.middle)
+                                .frame(maxWidth: 240, alignment: .trailing)
+                        } else {
+                            Label("Not found", systemImage: "exclamationmark.triangle.fill")
+                                .foregroundStyle(.orange)
+                        }
+                        Button("Choose…") { model.chooseQuickPromptCLI() }
+                        if model.settings.quickPromptCLIPath != nil {
+                            Button("Reset") { model.setQuickPromptCLIPath(nil) }
+                        }
+                    }
+                }
+                if model.quickPromptCLIPath == nil {
+                    Text("Install Claude Code (claude.com/claude-code) and run claude once in Terminal to log in. If it lives somewhere unusual, choose it here.")
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            } else {
+                HStack(spacing: 10) {
+                    Image(systemName: "power.circle")
+                        .foregroundStyle(.secondary)
+                        .accessibilityHidden(true)
+                    Text("Quick Prompt is off. Turn it on in Modules to ask Claude from the notch.")
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                }
+            }
+        } header: {
+            Text("Quick Prompt")
+        } footer: {
+            Text("Runs your claude command with read-only tools (Read, Grep, Glob) in the folder shown in the prompt bar. Brim makes no network requests itself; Claude Code does, under your login.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+        .onAppear { model.refreshQuickPromptCLI() }
     }
 }
 
@@ -560,7 +615,7 @@ private struct ModulesSettingsTab: View {
 
     private func setEnabled(_ module: any BrimModule, _ enabled: Bool) {
         // Turning a module on is the only path that can lead to a permission prompt.
-        if enabled, !module.isEnabled, !module.requiredPermissions.isEmpty {
+        if enabled, !module.isEnabled, module.explainsBeforeEnabling {
             permissionModuleID = module.id
         } else {
             model.setModuleEnabled(module.id, enabled)

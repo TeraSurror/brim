@@ -43,8 +43,15 @@ public struct PanelMetrics: Equatable, Sendable {
         return max(minimumExpandedWidth, cards + panelHorizontalPadding * 2)
     }
 
-    public init(moduleCount: Int) {
-        self.init(expandedWidth: Self.expandedWidth(forModuleCount: moduleCount))
+    /// Height a bar module (Quick Prompt) adds above the cards, so the cards keep their room.
+    public static let barHeight: CGFloat = 46
+    public static let baseExpandedHeight: CGFloat = 320
+
+    public init(moduleCount: Int, barCount: Int = 0) {
+        self.init(
+            expandedWidth: Self.expandedWidth(forModuleCount: moduleCount),
+            expandedHeight: Self.baseExpandedHeight + CGFloat(max(0, barCount)) * Self.barHeight
+        )
     }
 }
 

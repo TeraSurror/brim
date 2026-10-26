@@ -106,6 +106,69 @@ final class AppModelTests: XCTestCase {
         XCTAssertTrue(hotKeys.registered.isEmpty)
     }
 
+    private func makeQuickPromptModel(
+        enabled: [String],
+        cliPath: String? = nil
+    ) -> (AppModel, QuickPromptModule, FakePromptRunner) {
+        let runner = FakePromptRunner()
+        let prompt = QuickPromptModule(
+            runner: runner,
+            locator: FakeCLILocator(),
+            scratchDirectory: FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        )
+        var settings = Settings()
+        settings.enabledModules = enabled
+        settings.quickPromptCLIPath = cliPath
+        let model = AppModel(
+            store: FakeSettingsStore(settings),
+            loginItems: loginItems,
+            registry: ModuleRegistry(modules: [clock, prompt]),
+            permissions: permissions
+        )
+        return (model, prompt, runner)
+    }
+
+    func testBarModulesAreSeparateFromCards() {
+        let (model, _, _) = makeQuickPromptModel(enabled: ["prompt", "clock"])
+        XCTAssertEqual(model.cardModules.map(\.id), ["clock"])
+        XCTAssertEqual(model.barModules.map(\.id), ["prompt"])
+    }
+
+    func testAShowingConversationTakesOverThePanel() {
+        let (model, prompt, _) = makeQuickPromptModel(enabled: ["clock", "prompt"])
+        XCTAssertNil(model.fullPanelModuleID)
+
+        prompt.draft = "Hi"
+        prompt.send()
+        XCTAssertEqual(model.fullPanelModuleID, "prompt")
+
+        prompt.closeConversation()
+        XCTAssertNil(model.fullPanelModuleID)
+    }
+
+    func testQuickPromptExplainsBeforeEnablingButAsksNoPermission() async {
+        let (model, prompt, _) = makeQuickPromptModel(enabled: ["clock"])
+        await model.enableModuleAfterPermissionExplanation("prompt")
+        XCTAssertTrue(prompt.isEnabled)
+        XCTAssertTrue(permissions.requests.isEmpty)
+    }
+
+    func testQuickPromptSettingsReachTheModuleAndRecentFoldersComeBack() {
+        let (model, prompt, runner) = makeQuickPromptModel(enabled: ["prompt"], cliPath: "/custom/claude")
+        XCTAssertEqual(model.quickPromptCLIPath, "/custom/claude")
+        prompt.draft = "Hi"
+        prompt.send()
+        XCTAssertEqual(runner.executables.last?.path, "/custom/claude")
+
+        model.setQuickPromptCLIPath(nil)
+        XCTAssertEqual(model.quickPromptCLIPath, "/usr/local/bin/claude")
+
+        let folder = FileManager.default.temporaryDirectory
+        prompt.onRecentFoldersChange = { [weak model] in model?.setQuickPromptRecentFolders($0) }
+        prompt.choose(.folder(folder))
+        XCTAssertEqual(model.settings.quickPromptRecentFolders, [folder.path])
+    }
+
     func testEnabledModulesAreActiveAtLaunch() {
         XCTAssertEqual(model.activeModules.map(\.id), ["clock"])
         XCTAssertEqual(model.disabledModules.map(\.id), ["media", "agents"])

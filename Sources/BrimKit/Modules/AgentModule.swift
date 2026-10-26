@@ -47,6 +47,10 @@ public final class AgentModule: BrimModule, AgentModuleControlling, ObservableOb
     public var sessionCount: Int { sessions.count }
     public var finishedCount: Int { sessions.filter { $0.status == .done || $0.status == .error }.count }
     public var summary: AgentSummary { roster.summary }
+    /// The project of the session that reported most recently, Quick Prompt's default folder.
+    public var mostRecentProjectPath: String? {
+        sessions.filter { $0.cwd?.isEmpty == false }.max { $0.updatedAt < $1.updatedAt }?.cwd
+    }
 
     private let listener: AgentEventListening
     private let notifier: AgentNotifying
