@@ -126,15 +126,16 @@ private struct GeneralSettingsTab: View {
             Section {
                 Toggle("Show activity beside the notch", isOn: $model.settings.showLiveActivity)
                     .accessibilityLabel("Show activity beside the notch")
-                Toggle(
-                    "Show a handle on displays without a notch",
-                    isOn: $model.settings.showOnNonNotchedDisplays
-                )
-                .accessibilityLabel("Show a handle on displays without a notch")
+                Picker("Show Brim on", selection: $model.settings.displayMode) {
+                    ForEach(DisplayMode.allCases, id: \.self) { mode in
+                        Text(mode.title).tag(mode)
+                    }
+                }
+                .accessibilityLabel("Show Brim on")
             } header: {
                 Text("Notch")
             } footer: {
-                Text("While media plays or an agent needs you, the notch widens to show it, so you can see it without opening the panel. On a display without a notch this is a small pill at the top.")
+                Text("While media plays or an agent needs you, the notch widens to show it, so you can see it without opening the panel. A display without a notch gets a slim handle at the top, which becomes a small pill when something is live. With the lid closed, \"Only the notched display\" uses the main display.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }

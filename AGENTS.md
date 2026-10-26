@@ -13,8 +13,9 @@ agent's app (F11), first-run setup and the Claude Code hook installer (F12), a p
 hiding on displays where another app is full screen (F14).
 Settings are schema 5. 253 unit tests pass. [`docs/PROGRESS.md`](docs/PROGRESS.md) is the handoff between sessions —
 read it after the spec. The user signed off every manual check on 2026-10-26; F14 came out of that sign-off. The checklist is [`docs/TESTING.md`](docs/TESTING.md).
-The next M3 features (quick prompt, send-to-assistant) are not designed; brainstorm with the user before writing
-acceptance criteria.
+Next: Panel input (F15–F18: displays, keyboard, gestures, drop onto the notch), then quick prompt and send to
+assistant (F19–F20). Their criteria were written with the user on 2026-10-26; propose files and protocols before
+coding.
 
 Brim copies its project layout from its sibling app **Speakeasy** (`../speakeasy`, a menu bar manager), which is further
 along (M1 and M2 shipped). When this file says "as in Speakeasy", open the named Speakeasy file and copy its pattern.

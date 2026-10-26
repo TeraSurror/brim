@@ -2,7 +2,7 @@ import Foundation
 
 /// Persisted user settings. Custom decoding keeps old files loadable after a schema bump.
 public struct Settings: Codable, Equatable, Sendable {
-    public static let currentSchemaVersion = 5
+    public static let currentSchemaVersion = 6
     public static let hoverDelayRange: ClosedRange<Double> = 0.05...1.5
     public static let collapseDelayRange: ClosedRange<Double> = 0.1...2.0
     public static let agentRetentionRange: ClosedRange<Double> = 1...120
@@ -22,8 +22,8 @@ public struct Settings: Codable, Equatable, Sendable {
     public var launchAtLogin: Bool = false
     /// Enabled module IDs in display order. Unknown IDs are ignored by the registry.
     public var enabledModules: [String] = Settings.defaultEnabledModules
-    /// Show the slim handle and panel on displays without a notch.
-    public var showOnNonNotchedDisplays: Bool = true
+    /// Which displays get a panel. Replaces schema 5's `showOnNonNotchedDisplays` toggle.
+    public var displayMode: DisplayMode = .all
     /// Bundle identifier of the player to follow, or nil for whatever macOS reports. Choosing Spotify or
     /// Music enables the optional Apple Events path; the adapter alone needs no setting.
     public var preferredPlayerBundleID: String?
@@ -49,8 +49,8 @@ public struct Settings: Codable, Equatable, Sendable {
 
         launchAtLogin = try container.decodeIfPresent(Bool.self, forKey: .launchAtLogin) ?? defaults.launchAtLogin
         enabledModules = try container.decodeIfPresent([String].self, forKey: .enabledModules) ?? defaults.enabledModules
-        showOnNonNotchedDisplays = try container.decodeIfPresent(Bool.self, forKey: .showOnNonNotchedDisplays)
-            ?? defaults.showOnNonNotchedDisplays
+        // An unknown value from a newer build falls back to the default instead of failing the whole file.
+        displayMode = (try? container.decodeIfPresent(DisplayMode.self, forKey: .displayMode)) ?? defaults.displayMode
         preferredPlayerBundleID = try container.decodeIfPresent(String.self, forKey: .preferredPlayerBundleID)
         let retention = try container.decodeIfPresent(Double.self, forKey: .agentFinishedRetentionMinutes)
             ?? defaults.agentFinishedRetentionMinutes

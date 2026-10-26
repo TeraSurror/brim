@@ -6,8 +6,9 @@ before ending a session.
 **Last updated:** 2026-10-26
 **Current milestone:** M1–M3 F8 and the UX revision F9–F14 are complete and signed off by the user (2026-10-26). F14
 (hide over full-screen apps, menu-bar-height pill) came out of that sign-off.
-**Next action:** design the remaining "not designed yet" items (display choice, keyboard, drag and
-drop, gestures) or the next M3 feature (quick prompt, send to assistant) with the user before writing criteria.
+**Next action:** the user designed F15–F20 on 2026-10-26 (spec sections "Panel input" and "Milestone 3,
+continued"). Confirm the open points listed in the session log, then propose the file list and protocols for Panel
+input (F15–F18) and wait for approval before writing code. Stretch goals are deliberately not designed.
 
 ## How to resume
 
@@ -694,4 +695,19 @@ shorter than its menu bar. The list is kept as a record of what was checked.
   spec and amended F1 ("over full-screen apps") and F10 (pill height).
 - Verified with debug and release builds: Brim hid only the full-screen display and came back afterwards on both
   displays; the pill is now `150×30`. 253 tests pass. Brim was left running from `build/Brim.app` (release).
+
+### 2026-10-26 — design round for F15–F20
+
+- Decisions: displays via a mode picker (all / notched only / main only); a recordable global shortcut with no default;
+  focus only when opened by keyboard; gestures = scroll to open and swipe the media ears to skip; dragging toward the
+  notch opens drop zones; quick prompt runs the local `claude -p` with read-only tools in a chosen folder, as a prompt
+  bar over the cards; send to assistant accepts dropped files, clipboard, screenshot and selected text. Build order:
+  Panel input (F15–F18), then F19–F20. No stretch goals for now (S1 tray, when designed: references kept until
+  removed).
+- Checked the installed CLI (Claude Code 2.1.310): `--tools`, `--output-format stream-json`,
+  `--include-partial-messages`, `--resume` and `--add-dir` exist.
+- Defaults the agent chose while writing criteria, to confirm with the user: clicking the prompt field and dropping
+  onto Ask Claude take focus (exceptions to keyboard-only focus); the shortcut shows the panel over a full-screen app;
+  "notched only" falls back to the main display with the lid closed; F18 has no visible drop zone until F20; the
+  attachment limits (10 items, 20 MB each).
 

@@ -35,7 +35,7 @@ final class SettingsTests: XCTestCase {
         settings.collapseDelay = 0.8
         settings.launchAtLogin = true
         settings.enabledModules = ["clock", "media"]
-        settings.showOnNonNotchedDisplays = false
+        settings.displayMode = .mainOnly
         settings.preferredPlayerBundleID = "com.spotify.client"
         settings.agentFinishedRetentionMinutes = 30
         settings.agentNotificationsEnabled = true
@@ -51,7 +51,7 @@ final class SettingsTests: XCTestCase {
         XCTAssertEqual(settings.schemaVersion, Settings.currentSchemaVersion)
         XCTAssertEqual(settings.hoverDelay, 0.4)
         XCTAssertEqual(settings.enabledModules, ["media"])
-        XCTAssertFalse(settings.showOnNonNotchedDisplays)
+        XCTAssertEqual(settings.displayMode, .notchedOnly)
         XCTAssertEqual(settings.collapseDelay, Settings().collapseDelay)
     }
 
@@ -64,7 +64,7 @@ final class SettingsTests: XCTestCase {
 
         XCTAssertEqual(settings.schemaVersion, Settings.currentSchemaVersion)
         XCTAssertEqual(settings.hoverDelay, 0.25)
-        XCTAssertFalse(settings.showOnNonNotchedDisplays)
+        XCTAssertEqual(settings.displayMode, .notchedOnly)
         XCTAssertNil(settings.preferredPlayerBundleID)
         XCTAssertEqual(settings.agentFinishedRetentionMinutes, Settings().agentFinishedRetentionMinutes)
     }
@@ -109,6 +109,24 @@ final class SettingsTests: XCTestCase {
         XCTAssertEqual(settings.enabledModules, ["agents"])
         XCTAssertTrue(settings.opensOnHover)
         XCTAssertTrue(settings.showLiveActivity)
+    }
+
+    func testSchemaFiveHandleToggleBecomesADisplayMode() throws {
+        let off = try SettingsMigrator.migrate(
+            Data(#"{"schemaVersion":5,"showOnNonNotchedDisplays":false,"hoverDelay":0.3}"#.utf8))
+        XCTAssertEqual(off.schemaVersion, Settings.currentSchemaVersion)
+        XCTAssertEqual(off.displayMode, .notchedOnly)
+        XCTAssertEqual(off.hoverDelay, 0.3)
+
+        let on = try SettingsMigrator.migrate(Data(#"{"schemaVersion":5,"showOnNonNotchedDisplays":true}"#.utf8))
+        XCTAssertEqual(on.displayMode, .all)
+    }
+
+    func testUnknownDisplayModeFallsBackToAllDisplays() throws {
+        let settings = try SettingsMigrator.migrate(
+            Data(#"{"schemaVersion":6,"displayMode":"ceilingOnly","hoverDelay":0.3}"#.utf8))
+        XCTAssertEqual(settings.displayMode, .all)
+        XCTAssertEqual(settings.hoverDelay, 0.3)
     }
 
     func testOpenModeAndLiveNotchRoundTrip() throws {

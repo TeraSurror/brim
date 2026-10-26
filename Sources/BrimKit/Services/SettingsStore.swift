@@ -10,6 +10,12 @@ public enum SettingsMigrator {
         2: { _ in }, // schema 3 adds agent retention; the 10-minute default is applied by decoding
         3: { _ in }, // schema 4 adds the opt-in agent notification flag; false is the default
         4: { _ in }, // schema 5 adds the open mode and the live notch flag; both default on
+        5: { object in
+            // schema 6 replaces the handle toggle with a display mode: off meant "notched displays only".
+            if object.removeValue(forKey: "showOnNonNotchedDisplays") as? Bool == false {
+                object["displayMode"] = DisplayMode.notchedOnly.rawValue
+            }
+        },
     ]
 
     public static func migrate(_ data: Data) throws -> Settings {

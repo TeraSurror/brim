@@ -10,6 +10,9 @@ public final class AgentAlertPresenter: AgentAlertPresenting {
     /// Time left after the pointer moves off a card it had paused.
     public static let resumeDuration: TimeInterval = 3
 
+    /// Set from settings: the alert appears only on displays that show Brim.
+    public var displayMode: DisplayMode = .all
+
     private let screens: ScreenProviding
     private let scheduler: Scheduling
     private var window: NotchWindow?
@@ -24,7 +27,8 @@ public final class AgentAlertPresenter: AgentAlertPresenting {
         dismiss()
 
         let pointer = Self.cgPoint(from: NSEvent.mouseLocation)
-        guard let screen = AgentAlertGeometry.screen(for: pointer, in: screens.screens) else { return }
+        let shown = displayMode.screens(in: screens.screens)
+        guard let screen = AgentAlertGeometry.screen(for: pointer, in: shown) else { return }
         let cgFrame = AgentAlertGeometry.frame(for: screen)
         let window = NotchWindow(frame: Self.appKitFrame(for: cgFrame))
         window.hasShadow = true

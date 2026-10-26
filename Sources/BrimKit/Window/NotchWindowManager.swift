@@ -17,7 +17,7 @@ final class NotchWindowManager {
     private var controllers: [String: NotchWindowController] = [:]
     private var screenObserver: NSObjectProtocol?
     private var rebuildTask: TaskHandle?
-    private var showOnNonNotchedDisplays: Bool
+    private var displayMode: DisplayMode
     private var moduleCount: Int
     private var isLive: Bool
     private var screenSignature = ""
@@ -38,7 +38,7 @@ final class NotchWindowManager {
         self.moduleCount = model.activeModules.count
         self.metrics = PanelMetrics(moduleCount: model.activeModules.count)
         self.isLive = model.liveModuleID != nil
-        self.showOnNonNotchedDisplays = model.settings.showOnNonNotchedDisplays
+        self.displayMode = model.settings.displayMode
 
         monitor.onMove = { [weak self] point in self?.pointerMoved(to: point) }
         monitor.onLeftClick = { [weak self] point in self?.clicked(at: point) }
@@ -70,14 +70,14 @@ final class NotchWindowManager {
         rebuild()
     }
 
-    /// Called whenever settings change. Timing changes apply live; the non-notched toggle needs new windows.
+    /// Called whenever settings change. Timing changes apply live; a new display mode needs new windows.
     func apply(_ settings: Settings) {
         let timings = Self.timings(for: settings)
         for controller in controllers.values {
             controller.update(timings: timings)
         }
-        if settings.showOnNonNotchedDisplays != showOnNonNotchedDisplays {
-            showOnNonNotchedDisplays = settings.showOnNonNotchedDisplays
+        if settings.displayMode != displayMode {
+            displayMode = settings.displayMode
             // `@Published` fires before the property is stored, so pass this value explicitly.
             rebuild(force: true, using: settings)
         }
@@ -152,7 +152,7 @@ final class NotchWindowManager {
         let currentScreens = screens.screens
         // macOS sends several screen-parameter notifications during launch. Rebuilding on each one
         // would throw away a panel the user is already hovering.
-        let eligibleScreens = currentScreens.filter { $0.hasNotch || settings.showOnNonNotchedDisplays }
+        let eligibleScreens = settings.displayMode.screens(in: currentScreens)
         let signature = Self.signature(for: eligibleScreens)
         guard force || signature != screenSignature else {
             for controller in controllers.values {

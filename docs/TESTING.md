@@ -310,6 +310,22 @@ A scratch app put its own window into native full screen on each display while B
 - With media live, the external pill measured `150×30` against a 30 pt menu bar (it was `150×24` before).
 
 
+## Panel input manual verification (F15–F18)
+
+| Feature | Check | Expected |
+| --- | --- | --- |
+| F15 | Settings → General → Show Brim on → Only the notched display. | The external display's handle or pill disappears at once; the notch keeps working. |
+| F15 | Choose Only the main display. | Only the display with the menu bar (System Settings → Displays) has Brim. |
+| F15 | With Only the notched display, close the lid (clamshell on the external display). | Brim appears on the external display instead of disappearing. Open the lid: it moves back to the notch. |
+| F15 | With Only the notched display, enable alerts and send a `waiting` event with the pointer on the external display. | The alert drops from the MacBook notch, not the external display. |
+| F15 | Quit and relaunch. | The choice is kept; `settings.json` has `"schemaVersion" : 6` and `displayMode`, and no `showOnNonNotchedDisplays`. |
+
+### F15 verified by the agent (2026-10-26)
+
+With the user's settings file backed up, set to each mode and Brim relaunched: `notchedOnly` built only the `179×32`
+notch window, `mainOnly` only the external display's `148×10` handle, and `all` both. The original schema 5 file
+(`showOnNonNotchedDisplays: true`) migrated to All displays and was restored unchanged afterwards.
+
 ## Notched vs non-notched geometry
 
 - Notched screen: the collapsed window must equal the hardware notch (recorded 179×32 on the development machine).

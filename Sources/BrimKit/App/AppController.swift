@@ -11,6 +11,7 @@ public final class AppController {
     private let monitor: PointerMonitoring
     private let coordinator: NowPlayingCoordinator
     private let agent: AgentModule
+    private let alertPresenter: AgentAlertPresenter
     private let windows = WindowPresenter()
     private var windowManager: NotchWindowManager?
     private var cancellables = Set<AnyCancellable>()
@@ -26,7 +27,8 @@ public final class AppController {
         )
         let media = MediaModule(service: coordinator, scheduler: scheduler)
         let screens = NSScreenProvider()
-        let agent = AgentModule(alertPresenter: AgentAlertPresenter(screens: screens, scheduler: scheduler))
+        let alertPresenter = AgentAlertPresenter(screens: screens, scheduler: scheduler)
+        let agent = AgentModule(alertPresenter: alertPresenter)
         let model = AppModel(
             store: JSONSettingsStore(),
             loginItems: SMLoginItemService(),
@@ -42,6 +44,7 @@ public final class AppController {
         self.model = model
         self.coordinator = coordinator
         self.agent = agent
+        self.alertPresenter = alertPresenter
         self.screens = screens
         self.scheduler = scheduler
         self.monitor = NSEventPointerMonitor()
@@ -90,7 +93,10 @@ public final class AppController {
 
         model.$settings
             .removeDuplicates()
-            .sink { [weak self] settings in self?.windowManager?.apply(settings) }
+            .sink { [weak self] settings in
+                self?.windowManager?.apply(settings)
+                self?.alertPresenter.displayMode = settings.displayMode
+            }
             .store(in: &cancellables)
 
         Task { [weak self] in

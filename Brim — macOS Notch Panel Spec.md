@@ -64,7 +64,7 @@ Each service is a Swift protocol with one real implementation and one fake for t
 | `PanelState` | `.collapsed`, `.expanded` (the peek was removed in F9) |
 | `BrimModule` | id, title, live activity and ear views, expanded view, required permissions, isEnabled |
 | `NowPlaying` | title, artist, album, artwork, duration, elapsed, isPlaying, sourceApp |
-| `Settings` | hoverDelay, collapseDelay, opensOnHover, showLiveActivity, launchAtLogin, enabledModules, showOnNonNotchedDisplays, media and agent options, schemaVersion |
+| `Settings` | hoverDelay, collapseDelay, opensOnHover, showLiveActivity, launchAtLogin, enabledModules, displayMode, media and agent options, schemaVersion |
 
 **Reuse from Speakeasy** (copy and adapt, don't depend on it)
 
@@ -137,8 +137,8 @@ Prototype option 1; fall back to option 2 if it breaks.
 
 ## Milestone 3: AI tools and IDE integration
 
-M3 starts with local agent status. Quick prompt and send-to-assistant are later features: they need network access and
-additional permissions, so they get their own acceptance criteria before implementation.
+M3 starts with local agent status. Quick prompt and send-to-assistant (F19, F20) are specified in "Milestone 3,
+continued", after the panel input features (F15–F18) they depend on.
 
 **F7. Agent status**
 
@@ -258,27 +258,115 @@ Watching a full-screen video should not leave Brim's ears or handle on top of it
 - [x] Detection reads the public window list on Space, app and display changes: no permission prompt, no polling.
 - [x] Agent alerts are unaffected; they are opt-in and time-sensitive.
 
-**Not designed yet** (each needs its own acceptance criteria)
+## Panel input
 
-- Choose which displays show Brim (hiding over full-screen apps is F14).
-- Keyboard: Esc to close, a global shortcut to open, and a panel that can take keyboard focus (quick prompt needs it).
-- Drag and drop onto the notch (the file tray and send-to-assistant need it).
-- Gestures on the notch: swipe to skip tracks, scroll to open.
+Designed with the user on Oct 26, 2026. These are the foundations the rest of M3 needs: a way to reach the panel
+from the keyboard, a panel that can take focus, and a drop target on the notch. Build F15–F18 before F19 and F20.
 
-**Later M3 features (not designed yet)**
+**F15. Choose displays**
 
-- **Quick prompt.** A text box in the expanded panel that sends a prompt to a chosen assistant. Needs per-provider
-  network access, API keys in the Keychain and an explicit opt-in flow.
-- **Send to assistant.** Drop a file on the notch, or send the current selection or a screenshot, to an assistant.
-  Needs drag/drop plus Screen Recording or Accessibility permissions depending on the source.
+- [x] Settings → General → "Show Brim on": All displays (default), Only the notched display, or Only the main display
+  (the one with the menu bar in System Settings → Displays). It replaces the "screens without a notch" toggle.
+- [x] Changes apply immediately, and plugging displays in or out follows the choice without a relaunch.
+- [x] "Only the notched display" with no notched display connected (lid closed) falls back to the main display, so
+  Brim never disappears entirely.
+- [x] The notch alert (F11) appears on the pointer's display when Brim is shown there, otherwise on the first display
+  that shows Brim.
+- [x] Settings schema 6 stores the choice. Migration maps the old toggle: on → All displays, off → Only the notched
+  display. Diagnostics include it.
+
+**F16. Keyboard**
+
+- [ ] Settings → General has a shortcut recorder for "Open Brim", empty by default, with a Clear button. It is
+  registered as a system hot key, so no permission prompt appears. Shortcuts without ⌘, ⌥ or ⌃ are rejected, and a
+  combination macOS refuses (already taken) is reported in Settings, not silently ignored.
+- [ ] The shortcut opens the panel on the display under the pointer (or the first display that shows Brim). Pressing
+  it again, pressing Esc, or clicking outside the panel closes it.
+- [ ] A panel opened by the shortcut takes keyboard focus without activating Brim: the front app keeps its menu bar,
+  and when the panel closes, typing goes back to that app. It does not collapse when the pointer moves away.
+- [ ] Panels opened by hover or click stay non-activating exactly as in F9. The one exception is the quick prompt field
+  (F19): clicking it is a request to type, so it takes focus.
+- [ ] With focus, Tab moves between the panel's controls and Space/Return activate them; VoiceOver reads them.
+- [ ] The shortcut works over a full-screen app (F14): an explicit request shows the panel there, and it hides again
+  when closed.
+- [ ] The shortcut is stored in settings schema 6.
+
+**F17. Gestures**
+
+- [ ] A two-finger scroll down (or a mouse-wheel step down) over the notch, live notch, pill or handle opens the panel
+  at once, in both hover and click modes. A scroll up over the panel's top strip (the notch-height band) closes it;
+  scrolling inside a card still scrolls the card.
+- [ ] A horizontal two-finger swipe over the ears while media is live skips tracks: swipe left for next, right for
+  previous, without opening the panel. One swipe is one skip; trailing momentum never skips twice.
+- [ ] Swipes over agent ears, and gestures on a display hidden by F14, do nothing.
+- [ ] No permission is needed. Scroll events come from the existing pointer monitor and the panel window; nothing
+  polls.
+
+**F18. Drop onto the notch**
+
+- [ ] While files or text are being dragged anywhere, bringing the pointer to the notch, live notch, pill or handle
+  opens the panel into a drop view with one zone per module that accepts drops. Drags are noticed from the drag
+  pasteboard and mouse-drag events; no permission is needed.
+- [ ] Dropping on a zone hands the files or text to that module. Dropping elsewhere, or dragging out of the panel
+  (with the usual exit slop and collapse delay), does nothing and collapses it.
+- [ ] Modules declare the drop types they accept; the shell knows nothing about prompts or files. With no module
+  accepting drops, a drag never opens the panel. The first zone arrives with F20.
+- [ ] Displays hidden by F14 never open for a drag.
+
+## Milestone 3, continued: quick prompt and send to assistant
+
+Designed with the user on Oct 26, 2026. Quick prompt runs the user's own Claude Code CLI rather than calling a model
+API: it reuses the Claude login the user already has, needs no API key, and Brim itself still makes no network
+requests. The network traffic is Claude Code's, which the module's explanation says plainly.
+
+**F19. Quick prompt**
+
+- [ ] A Quick Prompt module, off by default. Turning it on explains what happens: Brim runs the installed `claude`
+  command with read-only tools, under the user's Claude login. No macOS permission is involved.
+- [ ] Brim finds `claude` on the login shell's `PATH` and in the usual install folders, and Settings shows which one
+  it found. When none is found, Settings explains how to install it and accepts a path. Brim never runs a command it
+  could not find or the user did not point it to.
+- [ ] With the module on, the open panel has a prompt bar across the top. A panel opened by the shortcut focuses it.
+  Return sends; the module cards make way for a scrolling answer view; Esc or Done brings the cards back.
+- [ ] The prompt runs in a folder shown in the prompt bar: the most recent agent session's project (F7) by default, or
+  one picked from recent folders or a folder panel. With no folder it runs in an empty scratch folder in Application
+  Support, which makes it plain chat.
+- [ ] Only read-only tools are available (Read, Grep, Glob). Nothing can edit files, run commands or fetch from the
+  web. The prompt and folder are passed as process arguments, never through a shell.
+- [ ] The answer streams in as it arrives, with paragraphs, lists and code blocks rendered, and a Copy button.
+  Stop ends the run. A follow-up in the same bar continues the same Claude Code session; New starts over.
+- [ ] If the panel closes while an answer is streaming, the run continues. The live notch shows a quiet working glyph,
+  then a done glyph until the panel is opened again.
+- [ ] A missing CLI, a Claude login problem or a non-zero exit shows a short, readable error in the answer view, with
+  the detail in the log. One prompt runs at a time; the process ends when Brim quits.
+- [ ] Nothing runs while no prompt is in flight, so the idle budget is unchanged.
+- [ ] Settings schema 7 stores the module's options (CLI path override, recent folders).
+
+**F20. Send to assistant**
+
+- [ ] With Quick Prompt on, F18's drop view shows an "Ask Claude" zone. Dropped files and text attach to the prompt as
+  removable chips, and the prompt field takes focus, since the drop was an explicit request.
+- [ ] The prompt bar has buttons to attach the clipboard (text, files or an image) and a screenshot. A second
+  recordable shortcut, "Ask about selection", attaches the text selected in the front app and opens the prompt.
+- [ ] Clipboard and dropped files need no permission. A screenshot asks for Screen Recording, and selected text asks
+  for Accessibility, each only on first use and after an in-app explanation. When one is denied, its button explains
+  why it is unavailable and the other sources keep working.
+- [ ] Attached files are made readable to Claude Code for that run only (their folders are added as extra read-only
+  directories). Screenshots and pasted images are written to a temporary folder that is deleted when the
+  conversation ends or Brim quits.
+- [ ] Limits are explicit: at most 10 attachments, and files over 20 MB are refused with a message.
+- [ ] The second shortcut is stored in settings schema 7.
 
 Each integration ships as a `BrimModule`.
 
 ## Stretch goals
 
-Build these only after M2 is stable; each is independent.
+Build these only after M2 is stable; each is independent. On Oct 26, 2026 the user chose not to design any of them
+yet.
 
-- **S1. File tray.** Drop files on the notch to park them; drag them back out or AirDrop them.
+- **S1. File tray.** Drop files on the notch to park them; drag them back out or AirDrop them. Decided already: the
+  tray keeps references (not copies) across restarts until the user removes them, and greys out files that moved.
+  It would be a second F18 drop zone.
 - **S2. Calendar.** Upcoming events via EventKit with meeting join buttons.
 - **S3. Speakeasy integration.** Show Speakeasy's hidden menu bar icons in the panel, talking to Speakeasy through its planned `speakeasy://` URL scheme or system-wide notifications. No shared code.
 - **S4. Volume and brightness display.** Replace the system on-screen display with one drawn from the notch.
