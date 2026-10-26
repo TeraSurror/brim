@@ -15,6 +15,8 @@ final class NotchWindowManager {
     private let fullScreen: FullScreenDetecting
     private var metrics: PanelMetrics
     private var controllers: [String: NotchWindowController] = [:]
+    /// Screen IDs in display order, so the keyboard falls back to the first display that shows Brim.
+    private var controllerOrder: [String] = []
     private var screenObserver: NSObjectProtocol?
     private var rebuildTask: TaskHandle?
     private var displayMode: DisplayMode
@@ -89,6 +91,20 @@ final class NotchWindowManager {
         for controller in controllers.values {
             controller.setLive(live)
         }
+    }
+
+    /// The open-panel shortcut: closes a keyboard-opened panel, otherwise opens the panel under the pointer.
+    func toggleFromKeyboard() {
+        if let open = controllers.values.first(where: \.isKeyboardOpen) {
+            open.closeFromKeyboard()
+            return
+        }
+        let primaryHeight = NSScreen.screens.first?.frame.height ?? 0
+        let mouse = NSEvent.mouseLocation
+        let pointer = CGPoint(x: mouse.x, y: primaryHeight - mouse.y)
+        let ordered = controllerOrder.compactMap { controllers[$0] }
+        let target = ordered.first { $0.screenFrame.contains(pointer) } ?? ordered.first
+        target?.openFromKeyboard()
     }
 
     private func setFullScreen(_ covered: Set<String>) {
@@ -181,6 +197,7 @@ final class NotchWindowManager {
         }
 
         controllers = next
+        controllerOrder = eligibleScreens.map(\.id)
         for controller in previous.values where next[controller.screenID] !== controller {
             controller.close()
         }

@@ -54,6 +54,7 @@ enum Diagnostics {
         lines += ["", "Panel:"]
         lines.append("  opens on: \(settings.opensOnHover ? "hover" : "click")")
         lines.append("  displays: \(settings.displayMode.title)")
+        lines.append("  open shortcut: \(settings.openPanelShortcut?.displayString ?? "none")")
         lines.append(
             "  live notch: \(settings.showLiveActivity ? "on" : "off"), showing \(liveModuleID ?? "nothing")")
 

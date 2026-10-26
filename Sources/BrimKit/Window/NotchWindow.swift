@@ -24,9 +24,32 @@ final class NotchWindow: NSPanel {
         worksWhenModal = true
     }
 
-    /// The panel must never take keyboard focus away from the app the user is working in.
-    override var canBecomeKey: Bool { false }
+    /// Only a panel opened from the keyboard (or a field that asks to type) may take keyboard focus. The
+    /// panel is non-activating, so even then the front app keeps its menu bar and stays active.
+    var acceptsKeyboardFocus = false
+    var onCancel: (() -> Void)?
+    var onResignKey: (() -> Void)?
+
+    override var canBecomeKey: Bool { acceptsKeyboardFocus }
     override var canBecomeMain: Bool { false }
+
+    override func cancelOperation(_ sender: Any?) {
+        onCancel?()
+    }
+
+    override func keyDown(with event: NSEvent) {
+        // Esc reaches the window directly when no control has focus.
+        if event.keyCode == 53 {
+            onCancel?()
+        } else {
+            super.keyDown(with: event)
+        }
+    }
+
+    override func resignKey() {
+        super.resignKey()
+        onResignKey?()
+    }
 
     /// macOS normally keeps a window's title bar below the menu bar. The panel is borderless and has to
     /// occupy the menu bar strip, so bypass the constraint entirely.

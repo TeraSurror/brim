@@ -27,6 +27,9 @@ public final class AppModel: ObservableObject {
             if settings.showLiveActivity != oldValue.showLiveActivity {
                 syncLiveActivity()
             }
+            if settings.openPanelShortcut != oldValue.openPanelShortcut {
+                syncHotKeys()
+            }
         }
     }
 
@@ -43,6 +46,16 @@ public final class AppModel: ObservableObject {
     @Published public var showsWelcome: Bool
     @Published public private(set) var claudeHookStatus: ClaudeHookStatus?
     @Published public var claudeHookError: String?
+    /// Set when macOS refuses the recorded shortcut, so Settings can say so instead of failing silently.
+    @Published public private(set) var shortcutError: String?
+    /// While Settings records a shortcut the old one is paused; otherwise pressing it again would trigger it
+    /// instead of reaching the recorder.
+    @Published public var isRecordingShortcut = false {
+        didSet {
+            guard isRecordingShortcut != oldValue else { return }
+            syncHotKeys()
+        }
+    }
 
     /// True when no settings file existed at launch.
     public let isFirstLaunch: Bool
@@ -58,25 +71,30 @@ public final class AppModel: ObservableObject {
     public var openSettings: () -> Void = {}
     public var quit: () -> Void = {}
     public var diagnostics: () -> String = { "" }
+    /// Called when a registered global shortcut is pressed.
+    public var onShortcut: (HotKeyAction) -> Void = { _ in }
 
     private let store: SettingsPersisting
     private let loginItems: LoginItemControlling
     private let registry: ModuleRegistry
     private let permissions: PermissionRequesting
     private let claudeHook: ClaudeHookInstalling?
+    private let hotKeys: HotKeyRegistering?
 
     public init(
         store: SettingsPersisting,
         loginItems: LoginItemControlling,
         registry: ModuleRegistry,
         permissions: PermissionRequesting,
-        claudeHook: ClaudeHookInstalling? = nil
+        claudeHook: ClaudeHookInstalling? = nil,
+        hotKeys: HotKeyRegistering? = nil
     ) {
         self.store = store
         self.loginItems = loginItems
         self.registry = registry
         self.permissions = permissions
         self.claudeHook = claudeHook
+        self.hotKeys = hotKeys
         self.isFirstLaunch = !store.hasSavedSettings
         self.showsWelcome = !store.hasSavedSettings
         self.claudeHookStatus = claudeHook?.status
@@ -88,6 +106,8 @@ public final class AppModel: ObservableObject {
         syncAgentRetention()
         syncAgentNotifications()
         syncLiveActivity()
+        hotKeys?.onPress = { [weak self] action in self?.onShortcut(action) }
+        syncHotKeys()
         refreshAutomationStatus()
         if settings.launchAtLogin != launchAtLogin {
             settings.launchAtLogin = launchAtLogin
@@ -237,6 +257,24 @@ public final class AppModel: ObservableObject {
         if sourceID != nil, automationStatus != .granted {
             showSettings(.media)
         }
+    }
+
+    // MARK: - Shortcuts
+
+    public func setOpenPanelShortcut(_ hotKey: HotKey?) {
+        settings.openPanelShortcut = hotKey?.isValid == true ? hotKey : nil
+    }
+
+    private func syncHotKeys() {
+        guard let hotKeys else { return }
+        hotKeys.unregister(.openPanel)
+        guard !isRecordingShortcut, let shortcut = settings.openPanelShortcut else {
+            shortcutError = nil
+            return
+        }
+        shortcutError = hotKeys.register(shortcut, for: .openPanel)
+            ? nil
+            : "macOS refused \(shortcut.displayString). Another app may already use it; try another combination."
     }
 
     // MARK: - Agents

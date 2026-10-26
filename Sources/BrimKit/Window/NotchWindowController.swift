@@ -16,6 +16,7 @@ final class NotchWindowController {
     private static let fadeDuration: TimeInterval = 0.16
 
     let screenID: String
+    let screenFrame: CGRect
     private let window: NotchWindow
     private let geometry: PanelGeometry
     private let panelState: PanelStateModel
@@ -26,6 +27,8 @@ final class NotchWindowController {
     private var pendingTasks: [TaskHandle] = []
     private var reportedActive = false
     private var isHidden = false
+    /// Opened by the shortcut: the window may hold keyboard focus until the panel closes.
+    private(set) var isKeyboardOpen = false
     /// Incremented for every visual transition so late callbacks from the previous one do nothing.
     private var generation = 0
 
@@ -63,6 +66,7 @@ final class NotchWindowController {
         window.setFrame(Self.appKitFrame(for: collapsed), display: false)
 
         self.screenID = screen.id
+        self.screenFrame = screen.frame
         self.window = window
         self.geometry = geometry
         self.panelState = panelState
@@ -74,6 +78,12 @@ final class NotchWindowController {
 
         machine.onStateChange = { [weak self] state in
             self?.transition(to: state)
+        }
+        window.onCancel = { [weak self] in self?.closeFromKeyboard() }
+        window.onResignKey = { [weak self] in
+            // Clicking another app or the desktop takes focus away; that closes a keyboard-opened panel.
+            guard let self, self.isKeyboardOpen else { return }
+            self.closeFromKeyboard()
         }
         hosting.onMouseEntered = { [weak self] in
             guard let self else { return }
@@ -110,11 +120,42 @@ final class NotchWindowController {
     /// covered. The state machine is disabled, which also collapses an open panel.
     func setHidden(_ hidden: Bool) {
         isHidden = hidden
+        // A panel the user explicitly opened stays until it is closed; it hides on the way out.
+        guard !isKeyboardOpen else { return }
         machine.isEnabled = !hidden
         if hidden {
             window.orderOut(nil)
         } else {
             window.orderFrontRegardless()
+        }
+    }
+
+    /// The shortcut is an explicit request, so it also opens over a full-screen app on this display.
+    func openFromKeyboard() {
+        isKeyboardOpen = true
+        machine.isEnabled = true
+        window.acceptsKeyboardFocus = true
+        machine.expandFromKeyboard()
+        // Non-activating: the window takes key focus while the front app stays active.
+        window.makeKeyAndOrderFront(nil)
+    }
+
+    func closeFromKeyboard() {
+        machine.collapseNow()
+    }
+
+    /// Gives keyboard focus back. Ordering the key window out makes the window server return focus to the
+    /// active app, which never stopped being active.
+    private func endKeyboardFocus() {
+        guard isKeyboardOpen else { return }
+        isKeyboardOpen = false
+        window.acceptsKeyboardFocus = false
+        if window.isKeyWindow {
+            window.orderOut(nil)
+            if !isHidden { window.orderFrontRegardless() }
+        }
+        if isHidden {
+            machine.isEnabled = false
         }
     }
 
@@ -190,6 +231,8 @@ final class NotchWindowController {
         let target = geometry.frame(for: .collapsed, live: machine.isLive)
         panelState.content = .collapsed
         window.ignoresMouseEvents = true
+        let wasHidden = isHidden && isKeyboardOpen
+        endKeyboardFocus()
 
         let finish: () -> Void = { [weak self] in
             guard let self, self.machine.state == .collapsed else { return }
@@ -197,6 +240,7 @@ final class NotchWindowController {
             self.panelState.showsLiveShape = self.machine.isLive
             self.panelState.showsLiveContent = self.machine.isLive
             self.applyCollapsedWindowState()
+            if wasHidden, self.isHidden { self.window.orderOut(nil) }
             // The panel is no longer visible; modules can stop their monitors now.
             self.reportActive(false)
         }

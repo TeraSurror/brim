@@ -69,6 +69,26 @@ final class FakeFullScreen: FullScreenDetecting {
     }
 }
 
+@MainActor
+final class FakeHotKeys: HotKeyRegistering {
+    var onPress: ((HotKeyAction) -> Void)?
+    private(set) var registered: [HotKeyAction: HotKey] = [:]
+    var refused: Set<HotKey> = []
+
+    func register(_ hotKey: HotKey, for action: HotKeyAction) -> Bool {
+        registered[action] = nil
+        guard !refused.contains(hotKey) else { return false }
+        registered[action] = hotKey
+        return true
+    }
+
+    func unregister(_ action: HotKeyAction) {
+        registered[action] = nil
+    }
+
+    func press(_ action: HotKeyAction) { onPress?(action) }
+}
+
 struct FakeLoginError: Error {}
 
 final class FakeLoginItems: LoginItemControlling {

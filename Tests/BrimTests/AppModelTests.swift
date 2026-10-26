@@ -29,6 +29,83 @@ final class AppModelTests: XCTestCase {
         )
     }
 
+    private let controlOptionSpace = HotKey(keyCode: 49, modifiers: [.control, .option], keyLabel: "Space")
+
+    private func makeModel(hotKeys: FakeHotKeys, shortcut: HotKey?) -> AppModel {
+        var settings = Settings()
+        settings.openPanelShortcut = shortcut
+        return AppModel(
+            store: FakeSettingsStore(settings),
+            loginItems: loginItems,
+            registry: ModuleRegistry(modules: [clock]),
+            permissions: permissions,
+            hotKeys: hotKeys
+        )
+    }
+
+    func testTheSavedShortcutIsRegisteredAtLaunchAndPressesAreForwarded() {
+        let hotKeys = FakeHotKeys()
+        let model = makeModel(hotKeys: hotKeys, shortcut: controlOptionSpace)
+        XCTAssertEqual(hotKeys.registered[.openPanel], controlOptionSpace)
+
+        var pressed: [HotKeyAction] = []
+        model.onShortcut = { pressed.append($0) }
+        hotKeys.press(.openPanel)
+        XCTAssertEqual(pressed, [.openPanel])
+    }
+
+    func testNoShortcutIsRegisteredByDefault() {
+        let hotKeys = FakeHotKeys()
+        _ = makeModel(hotKeys: hotKeys, shortcut: nil)
+        XCTAssertTrue(hotKeys.registered.isEmpty)
+    }
+
+    func testChangingAndClearingTheShortcutReRegisters() {
+        let hotKeys = FakeHotKeys()
+        let model = makeModel(hotKeys: hotKeys, shortcut: controlOptionSpace)
+        let commandB = HotKey(keyCode: 11, modifiers: [.command, .shift], keyLabel: "B")
+
+        model.setOpenPanelShortcut(commandB)
+        XCTAssertEqual(hotKeys.registered[.openPanel], commandB)
+        XCTAssertEqual(model.settings.openPanelShortcut, commandB)
+
+        model.setOpenPanelShortcut(nil)
+        XCTAssertNil(hotKeys.registered[.openPanel])
+        XCTAssertNil(model.settings.openPanelShortcut)
+    }
+
+    func testARefusedShortcutIsReportedAndClearsWhenFixed() {
+        let hotKeys = FakeHotKeys()
+        hotKeys.refused = [controlOptionSpace]
+        let model = makeModel(hotKeys: hotKeys, shortcut: nil)
+
+        model.setOpenPanelShortcut(controlOptionSpace)
+        XCTAssertNotNil(model.shortcutError)
+        XCTAssertTrue(model.shortcutError?.contains("⌃⌥Space") == true)
+
+        model.setOpenPanelShortcut(HotKey(keyCode: 11, modifiers: [.command, .shift], keyLabel: "B"))
+        XCTAssertNil(model.shortcutError)
+    }
+
+    func testRecordingPausesTheShortcut() {
+        let hotKeys = FakeHotKeys()
+        let model = makeModel(hotKeys: hotKeys, shortcut: controlOptionSpace)
+
+        model.isRecordingShortcut = true
+        XCTAssertNil(hotKeys.registered[.openPanel])
+
+        model.isRecordingShortcut = false
+        XCTAssertEqual(hotKeys.registered[.openPanel], controlOptionSpace)
+    }
+
+    func testAnInvalidShortcutIsNotSaved() {
+        let hotKeys = FakeHotKeys()
+        let model = makeModel(hotKeys: hotKeys, shortcut: nil)
+        model.setOpenPanelShortcut(HotKey(keyCode: 0, modifiers: [.shift], keyLabel: "A"))
+        XCTAssertNil(model.settings.openPanelShortcut)
+        XCTAssertTrue(hotKeys.registered.isEmpty)
+    }
+
     func testEnabledModulesAreActiveAtLaunch() {
         XCTAssertEqual(model.activeModules.map(\.id), ["clock"])
         XCTAssertEqual(model.disabledModules.map(\.id), ["media", "agents"])

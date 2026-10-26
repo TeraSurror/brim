@@ -20,6 +20,10 @@ public final class PanelStateMachine {
     /// Changing it never opens the panel by itself: ears appearing under a resting pointer are not a hover.
     public var isLive: Bool = false
 
+    /// True while a panel opened from the keyboard is open. The pointer leaving does not collapse it; Esc,
+    /// the shortcut again or a click outside do.
+    public private(set) var isHeldOpen = false
+
     private let scheduler: Scheduling
     private let geometry: PanelGeometry
     private var lastPoint: CGPoint?
@@ -52,7 +56,7 @@ public final class PanelStateMachine {
                 cancelOpen()
             }
         case .expanded:
-            if geometry.contains(point, in: .expanded, slop: timings.exitSlop) {
+            if isHeldOpen || geometry.contains(point, in: .expanded, slop: timings.exitSlop) {
                 cancelCollapse()
             } else {
                 scheduleCollapse()
@@ -60,13 +64,23 @@ public final class PanelStateMachine {
         }
     }
 
-    /// A click on the notch opens the panel immediately, in both hover and click-only mode.
+    /// A click on the notch opens the panel immediately, in both hover and click-only mode. A click outside
+    /// a panel held open by the keyboard closes it.
     public func clicked(at point: CGPoint) {
         guard isEnabled else { return }
         lastPoint = point
         if state == .collapsed, isOverCollapsed(point) {
             expandNow()
+        } else if isHeldOpen, !geometry.contains(point, in: .expanded, slop: timings.exitSlop) {
+            collapseNow()
         }
+    }
+
+    /// Opens at once and stays open until it is closed on purpose. Opening a panel that hover already
+    /// opened just holds it.
+    public func expandFromKeyboard() {
+        isHeldOpen = true
+        expandNow()
     }
 
     /// Used by the window layer when a screen goes away or the app updates its geometry.
@@ -117,7 +131,7 @@ public final class PanelStateMachine {
 
     private func collapseFired() {
         collapseTask = nil
-        guard isEnabled else { return }
+        guard isEnabled, !isHeldOpen else { return }
         // A late move back into the panel cancels the timer, but double-check the last known point in case
         // the pointer left and no move event arrived at the boundary.
         if let point = lastPoint, state == .expanded,
@@ -139,6 +153,7 @@ public final class PanelStateMachine {
     }
 
     private func transition(to newState: PanelState) {
+        if newState == .collapsed { isHeldOpen = false }
         guard state != newState else { return }
         state = newState
         onStateChange?(newState)

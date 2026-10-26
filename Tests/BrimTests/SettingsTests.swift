@@ -122,6 +122,22 @@ final class SettingsTests: XCTestCase {
         XCTAssertEqual(on.displayMode, .all)
     }
 
+    func testOpenPanelShortcutRoundTripsAndDefaultsToNone() throws {
+        XCTAssertNil(Settings().openPanelShortcut)
+        var settings = Settings()
+        settings.openPanelShortcut = HotKey(keyCode: 49, modifiers: [.control, .option], keyLabel: "Space")
+        let decoded = try SettingsMigrator.migrate(JSONEncoder().encode(settings))
+        XCTAssertEqual(decoded.openPanelShortcut, settings.openPanelShortcut)
+    }
+
+    func testAShortcutWithoutACommandKeyIsDroppedOnLoad() throws {
+        let data = Data(
+            #"{"schemaVersion":6,"openPanelShortcut":{"keyCode":0,"modifiers":4,"keyLabel":"A"},"hoverDelay":0.3}"#.utf8)
+        let settings = try SettingsMigrator.migrate(data)
+        XCTAssertNil(settings.openPanelShortcut)
+        XCTAssertEqual(settings.hoverDelay, 0.3)
+    }
+
     func testUnknownDisplayModeFallsBackToAllDisplays() throws {
         let settings = try SettingsMigrator.migrate(
             Data(#"{"schemaVersion":6,"displayMode":"ceilingOnly","hoverDelay":0.3}"#.utf8))

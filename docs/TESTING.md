@@ -319,12 +319,34 @@ A scratch app put its own window into native full screen on each display while B
 | F15 | With Only the notched display, close the lid (clamshell on the external display). | Brim appears on the external display instead of disappearing. Open the lid: it moves back to the notch. |
 | F15 | With Only the notched display, enable alerts and send a `waiting` event with the pointer on the external display. | The alert drops from the MacBook notch, not the external display. |
 | F15 | Quit and relaunch. | The choice is kept; `settings.json` has `"schemaVersion" : 6` and `displayMode`, and no `showOnNonNotchedDisplays`. |
+| F16 | Settings → General → Keyboard → Open Brim → Record Shortcut, press ⌃⌥⌘B. | The button shows ⌃⌥⌘B. Pressing B or ⇧B alone beeps and keeps recording; Esc cancels. |
+| F16 | In another app, press the shortcut. | The panel opens on the display under the pointer. The app keeps its menu bar (Brim does not activate). |
+| F16 | Type a letter, then press Esc. | The letter does not reach your app; Esc closes the panel and the next keystroke goes to your app again. |
+| F16 | Open with the shortcut, move the pointer far away, wait. | The panel stays open. Press the shortcut again (or click another window): it closes and your app has focus. |
+| F16 | Open with the shortcut while a video is full screen on that display. | The panel shows over the video; closing it hides Brim there again. |
+| F16 | With focus and Keyboard navigation on, press Tab and Space. | Focus moves through the panel's buttons; Space presses them. VoiceOver reads them. |
+| F16 | Record a combination another app already registered. | Settings says macOS refused it; nothing is registered. Clear removes the shortcut. |
 
 ### F15 verified by the agent (2026-10-26)
 
 With the user's settings file backed up, set to each mode and Brim relaunched: `notchedOnly` built only the `179×32`
 notch window, `mainOnly` only the external display's `148×10` handle, and `all` both. The original schema 5 file
 (`showOnNonNotchedDisplays: true`) migrated to All displays and was restored unchanged afterwards.
+
+### F16 verified by the agent (2026-10-26)
+
+With ⌃⌥⌘B written into a backed-up copy of the user's settings and synthetic key events:
+
+- The shortcut opened a `630×320` panel on the display under the pointer while the front app stayed active and
+  frontmost. A probe app's window lost key status and did not receive the next letter.
+- Esc closed it and the probe's window was key again and received the next letter. Pressing the shortcut again also
+  closed it. With the user's real front app (Brave), it stayed frontmost after six open/close cycles (three via Esc,
+  three via the shortcut).
+- A probe app that activated itself programmatically sometimes lost activation to another app after the close. That
+  did not happen with a user-activated app and looks like an artifact of programmatic activation.
+- Over a full-screen window on the external display, Brim was hidden, the shortcut showed the panel, Esc hid it again,
+  and the pill returned after leaving full screen.
+- Not verified: Tab/Space navigation, VoiceOver and a refused registration on a real conflict (unit tested with a fake).
 
 ## Notched vs non-notched geometry
 
@@ -354,6 +376,8 @@ notch window, `mainOnly` only the external display's `148×10` handle, and `all`
   needed.
 - The clock updates once a minute while the panel is visible; the collapsed panel has no timeline at all.
 - Window levels can change between macOS releases; keep all window setup in `NotchWindow`.
+- F16: ⌃⌥Space is macOS's default "Select next source in Input menu" shortcut. Brim can register it, but with several
+  input sources the two fight; pick another combination.
 - F14 detects full screen as "another app's window fills the display and the display shows no desktop" (Finder's and
   WindowManager's desktop-level windows are absent in a full-screen Space). On a Mac with neither (Finder's desktop
   disabled with `CreateDesktop` and no WindowManager shield), a window zoomed to fill the screen also hides Brim. A borderless,

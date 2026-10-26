@@ -110,3 +110,13 @@ public protocol FullScreenDetecting: AnyObject {
     func start()
     func stop()
 }
+
+/// System-wide shortcuts. Registered as Carbon hot keys, which need no permission; macOS delivers only the
+/// registered combination, never other typing.
+@MainActor
+public protocol HotKeyRegistering: AnyObject {
+    var onPress: ((HotKeyAction) -> Void)? { get set }
+    /// False when macOS refuses the combination, usually because another app already registered it.
+    func register(_ hotKey: HotKey, for action: HotKeyAction) -> Bool
+    func unregister(_ action: HotKeyAction)
+}

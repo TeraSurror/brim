@@ -141,6 +141,28 @@ private struct GeneralSettingsTab: View {
             }
 
             Section {
+                LabeledContent("Open Brim") {
+                    ShortcutRecorder(
+                        shortcut: model.settings.openPanelShortcut,
+                        isRecording: $model.isRecordingShortcut,
+                        onRecord: { model.setOpenPanelShortcut($0) },
+                        onClear: { model.setOpenPanelShortcut(nil) }
+                    )
+                }
+                if let error = model.shortcutError {
+                    Label(error, systemImage: "exclamationmark.triangle.fill")
+                        .font(.callout)
+                        .foregroundStyle(.orange)
+                }
+            } header: {
+                Text("Keyboard")
+            } footer: {
+                Text("Opens the panel on the display under the pointer, ready for the keyboard, without switching away from your app. Esc, the shortcut again or a click elsewhere closes it. No permission is needed.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            Section {
                 Toggle(
                     "Launch at login",
                     isOn: Binding(

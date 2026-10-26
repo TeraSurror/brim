@@ -277,19 +277,20 @@ from the keyboard, a panel that can take focus, and a drop target on the notch. 
 
 **F16. Keyboard**
 
-- [ ] Settings → General has a shortcut recorder for "Open Brim", empty by default, with a Clear button. It is
+- [x] Settings → General has a shortcut recorder for "Open Brim", empty by default, with a Clear button. It is
   registered as a system hot key, so no permission prompt appears. Shortcuts without ⌘, ⌥ or ⌃ are rejected, and a
   combination macOS refuses (already taken) is reported in Settings, not silently ignored.
-- [ ] The shortcut opens the panel on the display under the pointer (or the first display that shows Brim). Pressing
+- [x] The shortcut opens the panel on the display under the pointer (or the first display that shows Brim). Pressing
   it again, pressing Esc, or clicking outside the panel closes it.
-- [ ] A panel opened by the shortcut takes keyboard focus without activating Brim: the front app keeps its menu bar,
+- [x] A panel opened by the shortcut takes keyboard focus without activating Brim: the front app keeps its menu bar,
   and when the panel closes, typing goes back to that app. It does not collapse when the pointer moves away.
-- [ ] Panels opened by hover or click stay non-activating exactly as in F9. The one exception is the quick prompt field
+- [x] Panels opened by hover or click stay non-activating exactly as in F9. The one exception is the quick prompt field
   (F19): clicking it is a request to type, so it takes focus.
-- [ ] With focus, Tab moves between the panel's controls and Space/Return activate them; VoiceOver reads them.
-- [ ] The shortcut works over a full-screen app (F14): an explicit request shows the panel there, and it hides again
+- [ ] With focus, Tab moves between the panel's controls and Space/Return activate them (with System Settings →
+  Keyboard → Keyboard navigation on, as in every Mac app); VoiceOver reads them.
+- [x] The shortcut works over a full-screen app (F14): an explicit request shows the panel there, and it hides again
   when closed.
-- [ ] The shortcut is stored in settings schema 6.
+- [x] The shortcut is stored in settings schema 6.
 
 **F17. Gestures**
 

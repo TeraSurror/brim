@@ -27,6 +27,45 @@ final class PanelStateMachineTests: XCTestCase {
     private let earPoint = CGPoint(x: 630, y: 16)
     private let away = CGPoint(x: 756, y: 500)
 
+    func testKeyboardOpenStaysOpenWhenThePointerLeaves() {
+        machine.expandFromKeyboard()
+        XCTAssertEqual(machine.state, .expanded)
+        XCTAssertTrue(machine.isHeldOpen)
+
+        machine.pointerMoved(to: away)
+        scheduler.advance(by: 5)
+        XCTAssertEqual(machine.state, .expanded)
+    }
+
+    func testAClickOutsideClosesAKeyboardOpenedPanel() {
+        machine.expandFromKeyboard()
+        machine.clicked(at: CGPoint(x: 756, y: 100))
+        XCTAssertEqual(machine.state, .expanded)
+
+        machine.clicked(at: away)
+        XCTAssertEqual(machine.state, .collapsed)
+        XCTAssertFalse(machine.isHeldOpen)
+    }
+
+    func testClosingAKeyboardPanelReturnsToHoverBehaviour() {
+        machine.expandFromKeyboard()
+        machine.collapseNow()
+        XCTAssertFalse(machine.isHeldOpen)
+
+        machine.clicked(at: notchPoint)
+        machine.pointerMoved(to: away)
+        scheduler.advance(by: 0.5)
+        XCTAssertEqual(machine.state, .collapsed)
+    }
+
+    func testTheKeyboardHoldsAPanelHoverAlreadyOpened() {
+        machine.clicked(at: notchPoint)
+        machine.expandFromKeyboard()
+        machine.pointerMoved(to: away)
+        scheduler.advance(by: 1)
+        XCTAssertEqual(machine.state, .expanded)
+    }
+
     func testHoverOpensTheFullPanelAfterTheHoverDelay() {
         machine.pointerMoved(to: notchPoint)
         scheduler.advance(by: 0.14)

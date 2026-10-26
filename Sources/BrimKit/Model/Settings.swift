@@ -24,6 +24,9 @@ public struct Settings: Codable, Equatable, Sendable {
     public var enabledModules: [String] = Settings.defaultEnabledModules
     /// Which displays get a panel. Replaces schema 5's `showOnNonNotchedDisplays` toggle.
     public var displayMode: DisplayMode = .all
+    /// The global shortcut that opens the panel with keyboard focus. None by default, so Brim never takes a
+    /// combination another app relies on.
+    public var openPanelShortcut: HotKey?
     /// Bundle identifier of the player to follow, or nil for whatever macOS reports. Choosing Spotify or
     /// Music enables the optional Apple Events path; the adapter alone needs no setting.
     public var preferredPlayerBundleID: String?
@@ -51,6 +54,8 @@ public struct Settings: Codable, Equatable, Sendable {
         enabledModules = try container.decodeIfPresent([String].self, forKey: .enabledModules) ?? defaults.enabledModules
         // An unknown value from a newer build falls back to the default instead of failing the whole file.
         displayMode = (try? container.decodeIfPresent(DisplayMode.self, forKey: .displayMode)) ?? defaults.displayMode
+        let shortcut = (try? container.decodeIfPresent(HotKey.self, forKey: .openPanelShortcut)) ?? nil
+        openPanelShortcut = shortcut?.isValid == true ? shortcut : nil
         preferredPlayerBundleID = try container.decodeIfPresent(String.self, forKey: .preferredPlayerBundleID)
         let retention = try container.decodeIfPresent(Double.self, forKey: .agentFinishedRetentionMinutes)
             ?? defaults.agentFinishedRetentionMinutes

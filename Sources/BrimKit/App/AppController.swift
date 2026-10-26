@@ -34,7 +34,8 @@ public final class AppController {
             loginItems: SMLoginItemService(),
             registry: ModuleRegistry(modules: [media, ClockModule(), agent]),
             permissions: SystemPermissionService(),
-            claudeHook: ClaudeHookInstaller()
+            claudeHook: ClaudeHookInstaller(),
+            hotKeys: CarbonHotKeyService()
         )
         // The panel's source menu writes through settings so the choice survives a restart.
         media.onPreferredPlayerChange = { [weak model] sourceID in
@@ -55,6 +56,11 @@ public final class AppController {
 
         model.openSettings = { [weak self] in self?.openSettings() }
         model.quit = { NSApp.terminate(nil) }
+        model.onShortcut = { [weak self] action in
+            switch action {
+            case .openPanel: self?.windowManager?.toggleFromKeyboard()
+            }
+        }
         model.diagnostics = { [weak self] in
             guard let self else { return "" }
             let track = self.coordinator.current.map {

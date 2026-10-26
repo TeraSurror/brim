@@ -12,6 +12,7 @@ public enum SettingsMigrator {
         4: { _ in }, // schema 5 adds the open mode and the live notch flag; both default on
         5: { object in
             // schema 6 replaces the handle toggle with a display mode: off meant "notched displays only".
+            // It also adds the open-panel shortcut, which is unset by default.
             if object.removeValue(forKey: "showOnNonNotchedDisplays") as? Bool == false {
                 object["displayMode"] = DisplayMode.notchedOnly.rawValue
             }
